@@ -8,6 +8,8 @@ import android.provider.Settings
 import android.app.TimePickerDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,32 +38,60 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sam.audioroutine.domain.repo.ForegroundTextMode
+import com.sam.audioroutine.feature.background.AppBackgroundViewModel
 import java.time.DayOfWeek
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun ScheduleScreen(viewModel: ScheduleViewModel = hiltViewModel()) {
+fun ScheduleScreen(
+    viewModel: ScheduleViewModel = hiltViewModel(),
+    backgroundViewModel: AppBackgroundViewModel = hiltViewModel()
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val backgroundUiState by backgroundViewModel.uiState.collectAsStateWithLifecycle()
     val panelShape = RoundedCornerShape(16.dp)
     val context = LocalContext.current
+    val useLightForeground = backgroundUiState.foregroundTextMode == ForegroundTextMode.WHITE
+    val primaryTextColor = if (useLightForeground) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondaryTextColor = if (useLightForeground) {
+        Color.White.copy(alpha = 0.86f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val cardColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+    val outlinedButtonColors = ButtonDefaults.outlinedButtonColors(
+        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.52f),
+        contentColor = primaryTextColor
+    )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 16.dp, vertical = 20.dp),
+            .background(Color.Transparent)
+            .padding(horizontal = 16.dp, vertical = 20.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Alarms", style = MaterialTheme.typography.headlineMedium)
-            OutlinedButton(onClick = viewModel::addAlarm, shape = panelShape) {
+            Text(
+                "Alarms",
+                style = MaterialTheme.typography.headlineMedium,
+                color = primaryTextColor
+            )
+            OutlinedButton(
+                onClick = viewModel::addAlarm,
+                shape = panelShape,
+                colors = outlinedButtonColors
+            ) {
                 Text("Add alarm")
             }
         }
@@ -73,6 +103,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = hiltViewModel()) {
                 panelShape = panelShape,
                 onToggleExpanded = { viewModel.toggleExpanded(alarm.alarmId) },
                 onSetEnabled = { enabled -> viewModel.setEnabled(alarm.alarmId, enabled) },
+                onDeleteAlarm = { viewModel.removeAlarm(alarm.alarmId) },
                 onSelectRoutine = { routineId -> viewModel.setSelectedRoutine(alarm.alarmId, routineId) },
                 onSetTimeMode = { mode -> viewModel.setTimeInputMode(alarm.alarmId, mode) },
                 onPickTime = { mode ->
@@ -84,7 +115,11 @@ fun ScheduleScreen(viewModel: ScheduleViewModel = hiltViewModel()) {
                 },
                 onToggleDay = { day -> viewModel.toggleDay(alarm.alarmId, day) },
                 endTime = viewModel.computedEndTime(alarm),
-                selectedRoutine = viewModel.selectedRoutine(alarm)
+                selectedRoutine = viewModel.selectedRoutine(alarm),
+                primaryTextColor = primaryTextColor,
+                secondaryTextColor = secondaryTextColor,
+                cardColor = cardColor,
+                outlinedButtonColors = outlinedButtonColors
             )
         }
 
@@ -130,12 +165,17 @@ private fun AlarmCard(
     panelShape: RoundedCornerShape,
     onToggleExpanded: () -> Unit,
     onSetEnabled: (Boolean) -> Unit,
+    onDeleteAlarm: () -> Unit,
     onSelectRoutine: (Long) -> Unit,
     onSetTimeMode: (TimeInputMode) -> Unit,
     onPickTime: (TimeInputMode) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit,
     endTime: java.time.LocalTime,
-    selectedRoutine: com.sam.audioroutine.domain.model.Routine?
+    selectedRoutine: com.sam.audioroutine.domain.model.Routine?,
+    primaryTextColor: Color,
+    secondaryTextColor: Color,
+    cardColor: Color,
+    outlinedButtonColors: androidx.compose.material3.ButtonColors
 ) {
     val startText = formatTime(alarm.startTime)
     val endText = formatTime(endTime)
@@ -144,7 +184,7 @@ private fun AlarmCard(
 
     Surface(
         shape = panelShape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = cardColor,
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onToggleExpanded() }
@@ -162,7 +202,7 @@ private fun AlarmCard(
                     "Not scheduled"
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = secondaryTextColor
             )
 
             Row(
@@ -171,7 +211,8 @@ private fun AlarmCard(
             ) {
                 Text(
                     "$startText - $endText",
-                    style = MaterialTheme.typography.displaySmall
+                    style = MaterialTheme.typography.displaySmall,
+                    color = primaryTextColor
                 )
                 Switch(
                     checked = alarm.isEnabled,
@@ -184,7 +225,8 @@ private fun AlarmCard(
                     routines = routines,
                     selectedRoutineId = alarm.selectedRoutineId,
                     onSelected = onSelectRoutine,
-                    enabled = hasRoutines
+                    enabled = hasRoutines,
+                    outlinedButtonColors = outlinedButtonColors
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -207,23 +249,33 @@ private fun AlarmCard(
                     OutlinedButton(
                         onClick = { onPickTime(TimeInputMode.START) },
                         enabled = alarm.timeInputMode == TimeInputMode.START,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        colors = outlinedButtonColors
                     ) {
                         Text("Start $startText")
                     }
                     OutlinedButton(
                         onClick = { onPickTime(TimeInputMode.END) },
                         enabled = alarm.timeInputMode == TimeInputMode.END,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        colors = outlinedButtonColors
                     ) {
                         Text("End $endText")
                     }
                 }
 
+                OutlinedButton(
+                    onClick = onDeleteAlarm,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = outlinedButtonColors
+                ) {
+                    Text("Delete alarm")
+                }
+
                 Text(
                     "Days",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = secondaryTextColor
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -249,7 +301,7 @@ private fun AlarmCard(
                 Text(
                     alarm.statusText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = secondaryTextColor
                 )
             }
         }
@@ -275,7 +327,8 @@ private fun RoutinePicker(
     routines: List<com.sam.audioroutine.domain.model.Routine>,
     selectedRoutineId: Long?,
     onSelected: (Long) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    outlinedButtonColors: androidx.compose.material3.ButtonColors
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedName = routines.firstOrNull { it.id == selectedRoutineId }?.name ?: "Select routine"
@@ -284,7 +337,8 @@ private fun RoutinePicker(
         OutlinedButton(
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
-            enabled = enabled
+            enabled = enabled,
+            colors = outlinedButtonColors
         ) {
             Text(selectedName)
         }

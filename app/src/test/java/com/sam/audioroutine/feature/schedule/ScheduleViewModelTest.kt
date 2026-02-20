@@ -118,6 +118,36 @@ class ScheduleViewModelTest {
     }
 
     @Test
+    fun removeAlarm_deletesAlarmFromState() = runTest {
+        val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+
+        advanceUntilIdle()
+        viewModel.addAlarm()
+        val secondId = viewModel.uiState.value.alarms.last().alarmId
+
+        viewModel.removeAlarm(secondId)
+
+        assertEquals(1, viewModel.uiState.value.alarms.size)
+        assertEquals(1L, viewModel.uiState.value.alarms.first().alarmId)
+    }
+
+    @Test
+    fun removeAlarm_cancelsWhenAlarmEnabled() = runTest {
+        val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+
+        advanceUntilIdle()
+        val alarmId = viewModel.uiState.value.alarms.first().alarmId
+        viewModel.setEnabled(alarmId, true)
+        advanceUntilIdle()
+
+        viewModel.removeAlarm(alarmId)
+
+        assertEquals(alarmId, scheduler.lastCanceledAlarmId)
+    }
+
+    @Test
     fun setSelectedRoutine_inEndMode_keepsEndTimeAndRecomputesStart() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
         val viewModel = ScheduleViewModel(FakeRoutineRepository(withMultipleRoutines = true), scheduler)
@@ -225,6 +255,7 @@ private class FakeAlarmScheduler(
 ) : AlarmScheduler {
     var scheduleNextCallCount: Int = 0
     var lastRequest: AlarmScheduleRequest? = null
+    var lastCanceledAlarmId: Long? = null
 
     override fun canScheduleExactAlarms(): Boolean = canScheduleExactAlarms
 
@@ -234,5 +265,7 @@ private class FakeAlarmScheduler(
         return AlarmScheduleResult(scheduled = true)
     }
 
-    override fun cancel(alarmId: Long) = Unit
+    override fun cancel(alarmId: Long) {
+        lastCanceledAlarmId = alarmId
+    }
 }

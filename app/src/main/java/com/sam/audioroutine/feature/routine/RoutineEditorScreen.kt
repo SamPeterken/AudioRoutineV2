@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,6 +50,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -66,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -75,17 +79,21 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sam.audioroutine.domain.repo.ForegroundTextMode
 import com.sam.audioroutine.feature.player.PlaybackServiceContract
 import com.sam.audioroutine.feature.player.RoutinePlaybackService
+import com.sam.audioroutine.feature.background.AppBackgroundViewModel
 import kotlinx.coroutines.launch
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 fun RoutineEditorScreen(
     onOpenActivePlayback: () -> Unit = {},
-    viewModel: RoutineEditorViewModel = hiltViewModel()
+    viewModel: RoutineEditorViewModel = hiltViewModel(),
+    backgroundViewModel: AppBackgroundViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val backgroundUiState by backgroundViewModel.uiState.collectAsStateWithLifecycle()
     val latestBlocks by rememberUpdatedState(uiState.blocks)
     val blockShape = RoundedCornerShape(4.dp)
     val listState = rememberLazyListState()
@@ -100,6 +108,30 @@ fun RoutineEditorScreen(
     var pendingLocalFileBlockIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDeleteBlockIndex by remember { mutableStateOf<Int?>(null) }
     var showDeleteRoutineConfirmation by remember { mutableStateOf(false) }
+    var showBackgroundSettings by remember { mutableStateOf(false) }
+    val useLightForeground = backgroundUiState.foregroundTextMode == ForegroundTextMode.WHITE
+    val primaryTextColor = if (useLightForeground) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondaryTextColor = if (useLightForeground) {
+        Color.White.copy(alpha = 0.86f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val outlineColor = if (useLightForeground) {
+        Color.White.copy(alpha = 0.65f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant
+    }
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = outlineColor,
+        unfocusedBorderColor = outlineColor,
+        focusedTextColor = primaryTextColor,
+        unfocusedTextColor = primaryTextColor,
+        focusedLabelColor = secondaryTextColor,
+        unfocusedLabelColor = secondaryTextColor,
+        focusedPlaceholderColor = secondaryTextColor,
+        unfocusedPlaceholderColor = secondaryTextColor,
+        cursorColor = primaryTextColor
+    )
 
     val localAudioPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -138,6 +170,27 @@ fun RoutineEditorScreen(
         }
     }
 
+    val backgroundImagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        backgroundViewModel.setBackgroundUri(uri.toString())
+    }
+
+    val localImagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            backgroundImagePickerLauncher.launch(arrayOf("image/*"))
+        }
+    }
+
     LaunchedEffect(uiState.blocks.size) {
         val hasAddedBlock = uiState.blocks.size > previousBlockCount
         if (hasAddedBlock && shouldFocusAddedBlock && uiState.blocks.isNotEmpty()) {
@@ -165,19 +218,35 @@ fun RoutineEditorScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            text = "Compose your\nroutine",
-            style = MaterialTheme.typography.displaySmall,
-            lineHeight = MaterialTheme.typography.displaySmall.lineHeight
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Compose your\nroutine",
+                    style = MaterialTheme.typography.displaySmall,
+                    lineHeight = MaterialTheme.typography.displaySmall.lineHeight,
+                    color = primaryTextColor
+                )
+            }
+            IconButton(onClick = { showBackgroundSettings = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = "Background settings",
+                    tint = primaryTextColor
+                )
+            }
+        }
         Text(
             text = "Build a deliberate audio sequence with prompts, waits, and atmosphere.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = secondaryTextColor
         )
 
         LazyRow(
@@ -193,7 +262,7 @@ fun RoutineEditorScreen(
                         containerColor = if (selected) {
                             MaterialTheme.colorScheme.tertiary
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
                         },
                         contentColor = if (selected) {
                             MaterialTheme.colorScheme.onTertiary
@@ -219,13 +288,13 @@ fun RoutineEditorScreen(
             }
         }
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(color = outlineColor)
 
         if (uiState.isLoading) {
             Text(
                 text = "Loading routine...",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = secondaryTextColor
             )
             return@Column
         }
@@ -236,19 +305,20 @@ fun RoutineEditorScreen(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Routine Name") },
             shape = blockShape,
-            singleLine = true
+            singleLine = true,
+            colors = textFieldColors
         )
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, blockShape)
+                .border(1.dp, outlineColor, blockShape)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Text(
                 text = "TOTAL DURATION  ${uiState.totalDurationText}",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = secondaryTextColor
             )
         }
 
@@ -348,7 +418,9 @@ fun RoutineEditorScreen(
                             )
                         },
                     shape = blockShape,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+                    ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
@@ -358,7 +430,7 @@ fun RoutineEditorScreen(
                                 color = if (isDragging) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.outlineVariant
+                                    outlineColor
                                 },
                                 shape = blockShape
                             )
@@ -382,7 +454,7 @@ fun RoutineEditorScreen(
                                 Text(
                                     text = "$prompt • $waitSummary",
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = primaryTextColor,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
@@ -391,7 +463,7 @@ fun RoutineEditorScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.MusicNote,
                                         contentDescription = "Has music",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        tint = secondaryTextColor,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -406,7 +478,7 @@ fun RoutineEditorScreen(
                                     Icon(
                                         imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                                         contentDescription = if (isExpanded) "Collapse block" else "Expand block",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = secondaryTextColor
                                     )
                                 }
                             }
@@ -432,10 +504,12 @@ fun RoutineEditorScreen(
                                             "What would you like to start with?"
                                         } else {
                                             "What would you like to do next?"
-                                        }
+                                        },
+                                        color = secondaryTextColor
                                     )
                                 },
-                                shape = blockShape
+                                shape = blockShape,
+                                colors = textFieldColors
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -460,7 +534,8 @@ fun RoutineEditorScreen(
                                     label = { Text("Wait Min") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     shape = blockShape,
-                                    singleLine = true
+                                    singleLine = true,
+                                    colors = textFieldColors
                                 )
                                 OutlinedTextField(
                                     value = waitSecondsInput,
@@ -475,7 +550,8 @@ fun RoutineEditorScreen(
                                     label = { Text("Wait Sec") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     shape = blockShape,
-                                    singleLine = true
+                                    singleLine = true,
+                                    colors = textFieldColors
                                 )
                             }
                             BlockTimedTtsEditor(
@@ -555,14 +631,14 @@ fun RoutineEditorScreen(
                             .size(44.dp)
                             .border(
                                 width = 2.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant,
+                                color = outlineColor,
                                 shape = CircleShape
                             )
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Add,
                             contentDescription = "Add block",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = secondaryTextColor,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -683,6 +759,84 @@ fun RoutineEditorScreen(
                 }
             )
         }
+
+        if (showBackgroundSettings) {
+            AlertDialog(
+                onDismissRequest = { showBackgroundSettings = false },
+                title = { Text("App background") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Pick a photo to use as a blurred background across every screen.")
+                        Text("Text color")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = backgroundUiState.foregroundTextMode == ForegroundTextMode.BLACK,
+                                onClick = {
+                                    backgroundViewModel.setForegroundTextMode(ForegroundTextMode.BLACK)
+                                },
+                                label = { Text("Black") }
+                            )
+                            FilterChip(
+                                selected = backgroundUiState.foregroundTextMode == ForegroundTextMode.WHITE,
+                                onClick = {
+                                    backgroundViewModel.setForegroundTextMode(ForegroundTextMode.WHITE)
+                                },
+                                label = { Text("White") }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val permission = localImagePermission()
+                            val hasPermission = permission == null || ContextCompat.checkSelfPermission(
+                                context,
+                                permission
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPermission) {
+                                backgroundImagePickerLauncher.launch(arrayOf("image/*"))
+                            } else {
+                                localImagePermissionLauncher.launch(permission)
+                            }
+                            showBackgroundSettings = false
+                        },
+                        shape = blockShape
+                    ) {
+                        Text("Choose photo")
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!backgroundUiState.backgroundUri.isNullOrBlank()) {
+                            Button(
+                                onClick = {
+                                    backgroundViewModel.clearBackgroundUri()
+                                    showBackgroundSettings = false
+                                },
+                                shape = blockShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondary,
+                                    contentColor = MaterialTheme.colorScheme.onSecondary
+                                )
+                            ) {
+                                Text("Remove")
+                            }
+                        }
+                        Button(
+                            onClick = { showBackgroundSettings = false },
+                            shape = blockShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -703,6 +857,13 @@ private fun startPlaybackService(context: Context, routineId: Long?) {
 private fun localAudioPermission(): String? {
     return when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Manifest.permission.READ_MEDIA_AUDIO
+        else -> Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+}
+
+private fun localImagePermission(): String? {
+    return when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Manifest.permission.READ_MEDIA_IMAGES
         else -> Manifest.permission.READ_EXTERNAL_STORAGE
     }
 }

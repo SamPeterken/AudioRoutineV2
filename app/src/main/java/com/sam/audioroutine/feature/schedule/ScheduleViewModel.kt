@@ -97,6 +97,18 @@ class ScheduleViewModel @Inject constructor(
         }
     }
 
+    fun removeAlarm(alarmId: Long) {
+        val alarm = _uiState.value.alarms.firstOrNull { it.alarmId == alarmId } ?: return
+        if (alarm.isEnabled) {
+            routineScheduler.cancel(alarmId)
+        }
+        _uiState.update { state ->
+            state.copy(
+                alarms = state.alarms.filterNot { it.alarmId == alarmId }
+            )
+        }
+    }
+
     fun toggleExpanded(alarmId: Long) {
         updateAlarm(alarmId) { it.copy(isExpanded = !it.isExpanded) }
     }

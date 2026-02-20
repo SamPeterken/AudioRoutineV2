@@ -62,6 +62,8 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.google.material)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.coil.compose)
 
     implementation(libs.hilt.android)
     kapt(libs.hilt.compiler)

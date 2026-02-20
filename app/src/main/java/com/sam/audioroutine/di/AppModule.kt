@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.room.Room
 import com.sam.audioroutine.data.db.AudioRoutineDatabase
 import com.sam.audioroutine.data.db.RoutineDao
+import com.sam.audioroutine.data.repo.AppBackgroundRepositoryImpl
 import com.sam.audioroutine.data.repo.RoutineRepositoryImpl
+import com.sam.audioroutine.domain.repo.AppBackgroundRepository
 import com.sam.audioroutine.domain.repo.RoutineRepository
 import com.sam.audioroutine.feature.player.music.BlockMusicResolver
 import com.sam.audioroutine.feature.player.music.BlockMusicResolverImpl
@@ -52,6 +54,9 @@ object DatabaseModule {
 abstract class RepositoryModule {
     @Binds
     abstract fun bindRoutineRepository(impl: RoutineRepositoryImpl): RoutineRepository
+
+    @Binds
+    abstract fun bindAppBackgroundRepository(impl: AppBackgroundRepositoryImpl): AppBackgroundRepository
 }
 
 @Module
