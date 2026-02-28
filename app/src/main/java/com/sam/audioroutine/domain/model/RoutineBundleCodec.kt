@@ -32,6 +32,7 @@ object RoutineBundleCodec {
                         add(
                             buildJsonObject {
                                 put(POSITION_KEY, index)
+                                put(BLOCK_TITLE_KEY, block.title)
                                 put(TEXT_TO_SPEAK_KEY, block.textToSpeak)
                                 block.recordedPrompt?.toJsonObjectOrNull()?.let { prompt ->
                                     put(RECORDED_PROMPT_KEY, prompt)
@@ -84,6 +85,11 @@ object RoutineBundleCodec {
             .orEmpty()
         val recordedPrompt = blockObject[RECORDED_PROMPT_KEY]?.toRecordedPromptOrNull()
         if (textToSpeak.isBlank() && recordedPrompt == null) return null
+        val title = blockObject[BLOCK_TITLE_KEY]
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?.trim()
+            .orEmpty()
 
         val waitDurationSeconds = blockObject[WAIT_DURATION_SECONDS_KEY]
             ?.jsonPrimitive
@@ -109,6 +115,7 @@ object RoutineBundleCodec {
 
         return RoutineBlock(
             position = position,
+            title = title,
             textToSpeak = textToSpeak,
             recordedPrompt = recordedPrompt,
             waitDuration = Duration.ofSeconds(waitDurationSeconds),
@@ -221,6 +228,7 @@ object RoutineBundleCodec {
     private const val ROUTINE_NAME_KEY = "name"
     private const val BLOCKS_KEY = "blocks"
     private const val POSITION_KEY = "position"
+    private const val BLOCK_TITLE_KEY = "title"
     private const val TEXT_TO_SPEAK_KEY = "textToSpeak"
     private const val WAIT_DURATION_SECONDS_KEY = "waitDurationSeconds"
     private const val RECORDED_PROMPT_KEY = "recordedPrompt"

@@ -474,7 +474,14 @@ fun RoutineEditorScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         DisableSelection {
-                            val line = block.textToSpeak.ifBlank { "Untitled" }
+                            val line = block.title
+                                .ifBlank {
+                                    if (block.recordedPrompt != null) {
+                                        "Recorded prompt"
+                                    } else {
+                                        block.textToSpeak.ifBlank { "Untitled" }
+                                    }
+                                }
                             val waitSeconds = block.waitDuration.seconds
                             val waitSummary = if (waitSeconds % 60L == 0L) {
                                 "${waitSeconds / 60L}m"
@@ -528,6 +535,21 @@ fun RoutineEditorScreen(
                                     pendingFocusIndex = null
                                 }
                             }
+                            OutlinedTextField(
+                                value = block.title,
+                                onValueChange = { viewModel.updateBlockTitle(index, it) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Block title (not spoken)") },
+                                placeholder = {
+                                    Text(
+                                        "Optional name for this block",
+                                        color = translucentSecondaryForegroundColor
+                                    )
+                                },
+                                shape = blockShape,
+                                singleLine = true,
+                                colors = translucentTextFieldColors
+                            )
                             if (block.recordedPrompt == null) {
                                 OutlinedTextField(
                                     value = block.textToSpeak,
@@ -549,13 +571,15 @@ fun RoutineEditorScreen(
                                     shape = blockShape,
                                     colors = translucentTextFieldColors,
                                     trailingIcon = {
-                                        MicRecordIconButton { filePath, durationMillis ->
-                                            viewModel.setBlockRecordedPrompt(
-                                                index = index,
-                                                filePath = filePath,
-                                                durationMillis = durationMillis
-                                            )
-                                        }
+                                        MicRecordIconButton(
+                                            onRecorded = { filePath, durationMillis ->
+                                                viewModel.setBlockRecordedPrompt(
+                                                    index = index,
+                                                    filePath = filePath,
+                                                    durationMillis = durationMillis
+                                                )
+                                            }
+                                        )
                                     }
                                 )
                             } else {

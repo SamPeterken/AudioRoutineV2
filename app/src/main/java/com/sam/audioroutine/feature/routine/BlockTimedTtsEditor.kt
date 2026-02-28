@@ -118,48 +118,62 @@ fun BlockTimedTtsEditor(
             var eventSecondsInput by remember(blockIndex, eventIndex, event.offsetSeconds) {
                 mutableStateOf(eventSeconds.toString())
             }
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = eventMinutesInput,
-                    onValueChange = {
-                        if (it.isNotEmpty() && !it.all(Char::isDigit)) return@OutlinedTextField
-                        eventMinutesInput = it
-                        val minutes = it.toLongOrNull() ?: return@OutlinedTextField
-                        val seconds = eventSecondsInput.toLongOrNull() ?: return@OutlinedTextField
-                        val totalSeconds = (minutes * 60L) + seconds.coerceAtLeast(0L)
-                        viewModel.updateBlockTtsEventOffsetSeconds(
-                            index = blockIndex,
-                            eventIndex = eventIndex,
-                            offsetSecondsInput = totalSeconds.toString()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = eventMinutesInput,
+                        onValueChange = {
+                            if (it.isNotEmpty() && !it.all(Char::isDigit)) return@OutlinedTextField
+                            eventMinutesInput = it
+                            val minutes = it.toLongOrNull() ?: return@OutlinedTextField
+                            val seconds = eventSecondsInput.toLongOrNull() ?: return@OutlinedTextField
+                            val totalSeconds = (minutes * 60L) + seconds.coerceAtLeast(0L)
+                            viewModel.updateBlockTtsEventOffsetSeconds(
+                                index = blockIndex,
+                                eventIndex = eventIndex,
+                                offsetSecondsInput = totalSeconds.toString()
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Min") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = eventSecondsInput,
+                        onValueChange = {
+                            if (it.isNotEmpty() && !it.all(Char::isDigit)) return@OutlinedTextField
+                            eventSecondsInput = it
+                            val minutes = eventMinutesInput.toLongOrNull() ?: return@OutlinedTextField
+                            val seconds = it.toLongOrNull() ?: return@OutlinedTextField
+                            val totalSeconds = (minutes * 60L) + seconds.coerceAtLeast(0L)
+                            viewModel.updateBlockTtsEventOffsetSeconds(
+                                index = blockIndex,
+                                eventIndex = eventIndex,
+                                offsetSecondsInput = totalSeconds.toString()
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        label = { Text("Sec") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                    IconButton(
+                        onClick = { viewModel.removeBlockTtsEvent(index = blockIndex, eventIndex = eventIndex) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "Remove scheduled line"
                         )
-                    },
-                    modifier = Modifier.weight(0.25f),
-                    label = { Text("Min") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = eventSecondsInput,
-                    onValueChange = {
-                        if (it.isNotEmpty() && !it.all(Char::isDigit)) return@OutlinedTextField
-                        eventSecondsInput = it
-                        val minutes = eventMinutesInput.toLongOrNull() ?: return@OutlinedTextField
-                        val seconds = it.toLongOrNull() ?: return@OutlinedTextField
-                        val totalSeconds = (minutes * 60L) + seconds.coerceAtLeast(0L)
-                        viewModel.updateBlockTtsEventOffsetSeconds(
-                            index = blockIndex,
-                            eventIndex = eventIndex,
-                            offsetSecondsInput = totalSeconds.toString()
-                        )
-                    },
-                    modifier = Modifier.weight(0.25f),
-                    label = { Text("Sec") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
+                    }
+                }
                 if (event.recordedPrompt == null) {
                     OutlinedTextField(
                         value = event.text,
@@ -170,18 +184,20 @@ fun BlockTimedTtsEditor(
                                 value = it
                             )
                         },
-                        modifier = Modifier.weight(0.5f),
+                        modifier = Modifier.fillMaxWidth(),
                         label = { Text("Line") },
                         singleLine = true,
                         trailingIcon = {
-                            MicRecordIconButton { filePath, durationMillis ->
-                                viewModel.setBlockTtsEventRecordedPrompt(
-                                    index = blockIndex,
-                                    eventIndex = eventIndex,
-                                    filePath = filePath,
-                                    durationMillis = durationMillis
-                                )
-                            }
+                            MicRecordIconButton(
+                                onRecorded = { filePath, durationMillis ->
+                                    viewModel.setBlockTtsEventRecordedPrompt(
+                                        index = blockIndex,
+                                        eventIndex = eventIndex,
+                                        filePath = filePath,
+                                        durationMillis = durationMillis
+                                    )
+                                }
+                            )
                         }
                     )
                 } else {
@@ -202,16 +218,7 @@ fun BlockTimedTtsEditor(
                                 eventIndex = eventIndex
                             )
                         },
-                        modifier = Modifier.weight(0.5f)
-                    )
-                }
-                IconButton(
-                    onClick = { viewModel.removeBlockTtsEvent(index = blockIndex, eventIndex = eventIndex) },
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = "Remove scheduled line"
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -245,18 +252,20 @@ fun BlockTimedTtsEditor(
             label = { Text("Line text") },
             singleLine = true,
             trailingIcon = {
-                MicRecordIconButton { filePath, durationMillis ->
-                    val minutes = newOffsetMinutes.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-                    val seconds = newOffsetSeconds.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-                    val totalSeconds = (minutes * 60L) + seconds
-                    viewModel.addBlockRecordedTtsEvent(
-                        index = blockIndex,
-                        offsetSecondsInput = totalSeconds.toString(),
-                        filePath = filePath,
-                        durationMillis = durationMillis
-                    )
-                    newEventText = ""
-                }
+                MicRecordIconButton(
+                    onRecorded = { filePath, durationMillis ->
+                        val minutes = newOffsetMinutes.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                        val seconds = newOffsetSeconds.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                        val totalSeconds = (minutes * 60L) + seconds
+                        viewModel.addBlockRecordedTtsEvent(
+                            index = blockIndex,
+                            offsetSecondsInput = totalSeconds.toString(),
+                            filePath = filePath,
+                            durationMillis = durationMillis
+                        )
+                        newEventText = ""
+                    }
+                )
             }
         )
         Button(

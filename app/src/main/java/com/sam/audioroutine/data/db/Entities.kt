@@ -27,6 +27,7 @@ data class RoutineBlockEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val routineId: Long,
     val position: Int,
+    val title: String,
     val textToSpeak: String,
     val recordedPromptFilePath: String?,
     val recordedPromptDurationMillis: Long,

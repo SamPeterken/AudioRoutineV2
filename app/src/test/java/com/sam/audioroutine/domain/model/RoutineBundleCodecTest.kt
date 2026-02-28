@@ -47,4 +47,42 @@ class RoutineBundleCodecTest {
 
         assertNull(decoded)
     }
+
+    @Test
+    fun encodeAndDecode_preservesRecordedPromptsWithoutText() {
+        val routine = Routine(
+            name = "Voice prompts",
+            blocks = listOf(
+                RoutineBlock(
+                    position = 0,
+                    textToSpeak = "",
+                    recordedPrompt = RecordedPrompt(
+                        filePath = "/tmp/block-start.m4a",
+                        durationMillis = 1_800L
+                    ),
+                    waitDuration = Duration.ofMinutes(1),
+                    musicStyle = null,
+                    additionalTtsEvents = listOf(
+                        RoutineBlockTtsEvent(
+                            offsetSeconds = 20L,
+                            text = "",
+                            recordedPrompt = RecordedPrompt(
+                                filePath = "/tmp/event-20.m4a",
+                                durationMillis = 900L
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val encoded = RoutineBundleCodec.encode(routine)
+        val decoded = RoutineBundleCodec.decode(encoded)
+
+        assertNotNull(decoded)
+        val block = decoded?.blocks?.firstOrNull()
+        assertEquals("/tmp/block-start.m4a", block?.recordedPrompt?.filePath)
+        assertEquals(1_800L, block?.recordedPrompt?.durationMillis)
+        assertEquals("/tmp/event-20.m4a", block?.additionalTtsEvents?.firstOrNull()?.recordedPrompt?.filePath)
+    }
 }

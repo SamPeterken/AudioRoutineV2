@@ -51,6 +51,19 @@ fun MicRecordIconButton(
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
     var recordingState by remember { mutableStateOf<RecordingState>(RecordingState.Idle) }
+    var elapsedMillis by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(recordingState) {
+        val state = recordingState
+        if (state is RecordingState.Recording) {
+            while (recordingState is RecordingState.Recording) {
+                elapsedMillis = (SystemClock.elapsedRealtime() - state.startElapsedRealtime).coerceAtLeast(0L)
+                delay(200)
+            }
+        } else {
+            elapsedMillis = 0L
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -81,10 +94,6 @@ fun MicRecordIconButton(
 
     if (showDialog) {
         val state = recordingState
-        val elapsedMillis = when (state) {
-            is RecordingState.Recording -> (SystemClock.elapsedRealtime() - state.startElapsedRealtime).coerceAtLeast(0L)
-            else -> 0L
-        }
 
         AlertDialog(
             onDismissRequest = {

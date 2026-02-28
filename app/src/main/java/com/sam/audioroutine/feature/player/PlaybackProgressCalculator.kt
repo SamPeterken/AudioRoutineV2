@@ -47,7 +47,9 @@ object PlaybackProgressCalculator {
             upcomingActivities = orderedBlocks.mapIndexed { index, block ->
                 PlaybackActivitySummary(
                     index = index,
-                    line = block.textToSpeak.ifBlank { "Recorded prompt" },
+                    line = block.title.ifBlank {
+                        block.textToSpeak.ifBlank { "Recorded prompt" }
+                    },
                     plannedDurationMillis = blockDurations[index]
                 )
             }

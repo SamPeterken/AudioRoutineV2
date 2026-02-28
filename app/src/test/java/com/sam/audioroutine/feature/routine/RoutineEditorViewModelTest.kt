@@ -267,6 +267,28 @@ class RoutineEditorViewModelTest {
     }
 
     @Test
+    fun setAndClearBlockRecordedPrompt_switchesSource() = runTest {
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
+        advanceUntilIdle()
+
+        viewModel.setBlockRecordedPrompt(
+            index = 0,
+            filePath = "/tmp/prompt-a.m4a",
+            durationMillis = 2_100L
+        )
+
+        val recordedBlock = viewModel.uiState.value.blocks[0]
+        assertEquals("Recorded prompt", recordedBlock.textToSpeak)
+        assertEquals("/tmp/prompt-a.m4a", recordedBlock.recordedPrompt?.filePath)
+
+        viewModel.clearBlockRecordedPrompt(index = 0)
+
+        val clearedBlock = viewModel.uiState.value.blocks[0]
+        assertEquals(null, clearedBlock.recordedPrompt)
+        assertEquals("", clearedBlock.textToSpeak)
+    }
+
+    @Test
     fun addRoutine_createsAndSelectsAdditionalRoutine() = runTest {
         val repository = FakeRoutineRepository()
         val viewModel = RoutineEditorViewModel(repository, FakeRoutineSeedSource())

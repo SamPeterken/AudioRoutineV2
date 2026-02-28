@@ -45,7 +45,8 @@ object DatabaseModule {
         ).addMigrations(
             AudioRoutineDatabase.MIGRATION_1_2,
             AudioRoutineDatabase.MIGRATION_2_3,
-            AudioRoutineDatabase.MIGRATION_3_4
+            AudioRoutineDatabase.MIGRATION_3_4,
+            AudioRoutineDatabase.MIGRATION_4_5
         )
             .build()
     }

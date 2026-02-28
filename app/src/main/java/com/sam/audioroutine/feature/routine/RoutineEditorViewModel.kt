@@ -79,6 +79,7 @@ class RoutineEditorViewModel @Inject constructor(
         RoutineBlock(
             id = -1L,
             position = 0,
+            title = "Wake up",
             textToSpeak = "Wake up",
             waitDuration = Duration.ofMinutes(2),
             musicStyle = defaultWakeTrack.title,
@@ -92,6 +93,7 @@ class RoutineEditorViewModel @Inject constructor(
         RoutineBlock(
             id = -2L,
             position = 1,
+            title = "Hydrate",
             textToSpeak = "Drink a glass of water",
             waitDuration = Duration.ofMinutes(2),
             musicStyle = defaultWaterTrack.title,
@@ -105,6 +107,7 @@ class RoutineEditorViewModel @Inject constructor(
         RoutineBlock(
             id = -3L,
             position = 2,
+            title = "Exercise",
             textToSpeak = "Exercise",
             waitDuration = Duration.ofMinutes(20),
             musicStyle = defaultExerciseTrack.title,
@@ -118,6 +121,7 @@ class RoutineEditorViewModel @Inject constructor(
         RoutineBlock(
             id = -4L,
             position = 3,
+            title = "Shower",
             textToSpeak = "Take a shower",
             waitDuration = Duration.ofMinutes(10),
             musicStyle = defaultShowerTrack.title,
@@ -131,6 +135,7 @@ class RoutineEditorViewModel @Inject constructor(
         RoutineBlock(
             id = -5L,
             position = 4,
+            title = "Meditate",
             textToSpeak = "Meditate",
             waitDuration = Duration.ofMinutes(10),
             musicStyle = defaultMeditateTrack.title,
@@ -258,6 +263,16 @@ class RoutineEditorViewModel @Inject constructor(
                 textToSpeak = value,
                 recordedPrompt = null
             )
+            state.copy(blocks = updated)
+        }
+        scheduleAutosave()
+    }
+
+    fun updateBlockTitle(index: Int, value: String) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val updated = state.blocks.toMutableList()
+            updated[index] = updated[index].copy(title = value)
             state.copy(blocks = updated)
         }
         scheduleAutosave()

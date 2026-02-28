@@ -45,6 +45,7 @@ data class RoutineBlock(
     val id: Long = 0,
     val routineId: Long = 0,
     val position: Int,
+    val title: String = "",
     val textToSpeak: String,
     val recordedPrompt: RecordedPrompt? = null,
     val waitDuration: Duration,
