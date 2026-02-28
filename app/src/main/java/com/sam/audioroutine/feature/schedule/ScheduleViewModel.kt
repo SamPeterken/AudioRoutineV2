@@ -2,13 +2,16 @@ package com.sam.audioroutine.feature.schedule
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sam.audioroutine.domain.model.AlarmTimeInputMode
+import com.sam.audioroutine.domain.model.PersistedAlarm
+import com.sam.audioroutine.domain.model.PersistedAlarmState
 import com.sam.audioroutine.domain.model.Routine
+import com.sam.audioroutine.domain.repo.AlarmStateRepository
 import com.sam.audioroutine.domain.repo.RoutineRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Duration
-import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import javax.inject.Inject
@@ -47,6 +50,7 @@ data class ScheduleUiState(
 class ScheduleViewModel @Inject constructor(
     private val routineRepository: RoutineRepository,
     private val routineScheduler: AlarmScheduler,
+    private val alarmStateRepository: AlarmStateRepository,
     private val clock: Clock = Clock.systemDefaultZone()
 ) : ViewModel() {
 
@@ -54,7 +58,21 @@ class ScheduleViewModel @Inject constructor(
     val uiState: StateFlow<ScheduleUiState> = _uiState.asStateFlow()
 
     init {
+        observeAlarmState()
         observeRoutines()
+    }
+
+    private fun observeAlarmState() {
+        viewModelScope.launch {
+            alarmStateRepository.observeAlarmState().collect { persistedState ->
+                _uiState.update { state ->
+                    state.copy(
+                        alarms = persistedState.alarms.map { it.toUiState() },
+                        nextAlarmId = persistedState.nextAlarmId
+                    )
+                }
+            }
+        }
     }
 
     private fun observeRoutines() {
@@ -95,6 +113,7 @@ class ScheduleViewModel @Inject constructor(
                 nextAlarmId = state.nextAlarmId + 1
             )
         }
+        persistAlarmState()
     }
 
     fun removeAlarm(alarmId: Long) {
@@ -107,6 +126,7 @@ class ScheduleViewModel @Inject constructor(
                 alarms = state.alarms.filterNot { it.alarmId == alarmId }
             )
         }
+        persistAlarmState()
     }
 
     fun toggleExpanded(alarmId: Long) {
@@ -250,11 +270,17 @@ class ScheduleViewModel @Inject constructor(
         routineId: Long,
     ): AlarmScheduleRequest? {
         return if (alarm.selectedDays.isEmpty()) {
+            val now = ZonedDateTime.now(clock)
+            val oneShotDate = if (alarm.startTime.isAfter(now.toLocalTime())) {
+                now.toLocalDate()
+            } else {
+                now.toLocalDate().plusDays(1)
+            }
             AlarmScheduleRequest(
                 alarmId = alarm.alarmId,
                 routineId = routineId,
                 startTime = alarm.startTime,
-                oneShotDate = LocalDate.now(clock).plusDays(1)
+                oneShotDate = oneShotDate
             )
         } else {
             AlarmScheduleRequest(
@@ -299,5 +325,50 @@ class ScheduleViewModel @Inject constructor(
                 }
             )
         }
+        persistAlarmState()
+    }
+
+    private fun persistAlarmState() {
+        val persisted = PersistedAlarmState(
+            alarms = _uiState.value.alarms.map { it.toPersistedAlarm() },
+            nextAlarmId = _uiState.value.nextAlarmId
+        )
+        viewModelScope.launch {
+            alarmStateRepository.saveAlarmState(persisted)
+        }
+    }
+
+    private fun PersistedAlarm.toUiState(): AlarmUiState {
+        return AlarmUiState(
+            alarmId = alarmId,
+            selectedRoutineId = selectedRoutineId,
+            startTime = startTime,
+            selectedDays = selectedDays,
+            isEnabled = isEnabled,
+            isExpanded = isExpanded,
+            timeInputMode = when (timeInputMode) {
+                AlarmTimeInputMode.START -> TimeInputMode.START
+                AlarmTimeInputMode.END -> TimeInputMode.END
+            },
+            nextTrigger = nextTrigger,
+            statusText = statusText
+        )
+    }
+
+    private fun AlarmUiState.toPersistedAlarm(): PersistedAlarm {
+        return PersistedAlarm(
+            alarmId = alarmId,
+            selectedRoutineId = selectedRoutineId,
+            startTime = startTime,
+            selectedDays = selectedDays,
+            isEnabled = isEnabled,
+            isExpanded = isExpanded,
+            timeInputMode = when (timeInputMode) {
+                TimeInputMode.START -> AlarmTimeInputMode.START
+                TimeInputMode.END -> AlarmTimeInputMode.END
+            },
+            nextTrigger = nextTrigger,
+            statusText = statusText
+        )
     }
 }

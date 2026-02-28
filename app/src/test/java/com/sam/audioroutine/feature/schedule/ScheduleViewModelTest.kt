@@ -2,7 +2,10 @@ package com.sam.audioroutine.feature.schedule
 
 import com.sam.audioroutine.domain.model.Routine
 import com.sam.audioroutine.domain.model.RoutineBlock
+import com.sam.audioroutine.domain.model.PersistedAlarm
+import com.sam.audioroutine.domain.model.PersistedAlarmState
 import com.sam.audioroutine.domain.repo.RoutineRepository
+import com.sam.audioroutine.domain.repo.AlarmStateRepository
 import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Duration
@@ -42,7 +45,7 @@ class ScheduleViewModelTest {
     @Test
     fun setEnabled_showsExactAlarmSettingsPrompt_whenExactAlarmPermissionMissing() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = false)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository())
 
         advanceUntilIdle()
         val alarmId = viewModel.uiState.value.alarms.first().alarmId
@@ -54,20 +57,43 @@ class ScheduleViewModelTest {
     }
 
     @Test
-    fun setEnabled_withoutWeekdays_schedulesOneShotForNextDay() = runTest {
+    fun setEnabled_withoutWeekdays_schedulesOneShotForTodayWhenTimeStillAhead() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val fixedClock = Clock.fixed(Instant.parse("2026-02-20T08:00:00Z"), ZoneId.of("UTC"))
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, fixedClock)
+        val fixedClock = Clock.fixed(Instant.parse("2026-02-20T14:00:00Z"), ZoneId.of("UTC"))
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository(), fixedClock)
 
         advanceUntilIdle()
         val alarmId = viewModel.uiState.value.alarms.first().alarmId
+        viewModel.updateTime(alarmId, TimeInputMode.START, LocalTime.of(15, 0))
         viewModel.setEnabled(alarmId, true)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.showAlarmPermissionsPrompt)
         assertEquals(1, scheduler.scheduleNextCallCount)
         assertEquals(alarmId, scheduler.lastRequest?.alarmId)
-        assertEquals(LocalTime.of(7, 0), scheduler.lastRequest?.startTime)
+        assertEquals(LocalTime.of(15, 0), scheduler.lastRequest?.startTime)
+        assertEquals(2026, scheduler.lastRequest?.oneShotDate?.year)
+        assertEquals(2, scheduler.lastRequest?.oneShotDate?.monthValue)
+        assertEquals(20, scheduler.lastRequest?.oneShotDate?.dayOfMonth)
+        assertTrue(scheduler.lastRequest?.daysOfWeek?.isEmpty() == true)
+    }
+
+    @Test
+    fun setEnabled_withoutWeekdays_schedulesOneShotForTomorrowWhenTimePassed() = runTest {
+        val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
+        val fixedClock = Clock.fixed(Instant.parse("2026-02-20T14:00:00Z"), ZoneId.of("UTC"))
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository(), fixedClock)
+
+        advanceUntilIdle()
+        val alarmId = viewModel.uiState.value.alarms.first().alarmId
+        viewModel.updateTime(alarmId, TimeInputMode.START, LocalTime.of(13, 0))
+        viewModel.setEnabled(alarmId, true)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showAlarmPermissionsPrompt)
+        assertEquals(1, scheduler.scheduleNextCallCount)
+        assertEquals(alarmId, scheduler.lastRequest?.alarmId)
+        assertEquals(LocalTime.of(13, 0), scheduler.lastRequest?.startTime)
         assertEquals(2026, scheduler.lastRequest?.oneShotDate?.year)
         assertEquals(2, scheduler.lastRequest?.oneShotDate?.monthValue)
         assertEquals(21, scheduler.lastRequest?.oneShotDate?.dayOfMonth)
@@ -77,7 +103,7 @@ class ScheduleViewModelTest {
     @Test
     fun updateTimeText_inEndMode_updatesStartTimeFromRoutineDuration() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository())
 
         advanceUntilIdle()
         val alarm = viewModel.uiState.value.alarms.first()
@@ -93,7 +119,7 @@ class ScheduleViewModelTest {
     @Test
     fun toggleDay_thenEnable_schedulesRepeatingWeekdayAlarm() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository())
 
         advanceUntilIdle()
         val alarmId = viewModel.uiState.value.alarms.first().alarmId
@@ -108,7 +134,7 @@ class ScheduleViewModelTest {
     @Test
     fun addAlarm_createsSecondIndependentAlarm() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository())
 
         advanceUntilIdle()
         viewModel.addAlarm()
@@ -120,7 +146,7 @@ class ScheduleViewModelTest {
     @Test
     fun removeAlarm_deletesAlarmFromState() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository())
 
         advanceUntilIdle()
         viewModel.addAlarm()
@@ -135,7 +161,7 @@ class ScheduleViewModelTest {
     @Test
     fun removeAlarm_cancelsWhenAlarmEnabled() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler)
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, FakeAlarmStateRepository())
 
         advanceUntilIdle()
         val alarmId = viewModel.uiState.value.alarms.first().alarmId
@@ -150,7 +176,11 @@ class ScheduleViewModelTest {
     @Test
     fun setSelectedRoutine_inEndMode_keepsEndTimeAndRecomputesStart() = runTest {
         val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
-        val viewModel = ScheduleViewModel(FakeRoutineRepository(withMultipleRoutines = true), scheduler)
+        val viewModel = ScheduleViewModel(
+            FakeRoutineRepository(withMultipleRoutines = true),
+            scheduler,
+            FakeAlarmStateRepository()
+        )
 
         advanceUntilIdle()
         val alarm = viewModel.uiState.value.alarms.first()
@@ -166,6 +196,46 @@ class ScheduleViewModelTest {
 
         assertEquals(fixedEnd, viewModel.computedEndTime(afterSwitch))
         assertEquals(LocalTime.of(7, 55), afterSwitch.startTime)
+    }
+
+    @Test
+    fun init_hydratesAlarmsFromRepository() = runTest {
+        val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
+        val alarmRepo = FakeAlarmStateRepository(
+            PersistedAlarmState(
+                alarms = listOf(
+                    PersistedAlarm(
+                        alarmId = 42L,
+                        startTime = LocalTime.of(6, 30),
+                        selectedDays = setOf(DayOfWeek.FRIDAY),
+                        isEnabled = true
+                    )
+                ),
+                nextAlarmId = 43L
+            )
+        )
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, alarmRepo)
+
+        advanceUntilIdle()
+
+        assertEquals(42L, viewModel.uiState.value.alarms.first().alarmId)
+        assertEquals(LocalTime.of(6, 30), viewModel.uiState.value.alarms.first().startTime)
+        assertEquals(setOf(DayOfWeek.FRIDAY), viewModel.uiState.value.alarms.first().selectedDays)
+        assertEquals(43L, viewModel.uiState.value.nextAlarmId)
+    }
+
+    @Test
+    fun addAlarm_persistsUpdatedAlarmState() = runTest {
+        val scheduler = FakeAlarmScheduler(canScheduleExactAlarms = true)
+        val alarmRepo = FakeAlarmStateRepository()
+        val viewModel = ScheduleViewModel(FakeRoutineRepository(), scheduler, alarmRepo)
+
+        advanceUntilIdle()
+        viewModel.addAlarm()
+        advanceUntilIdle()
+
+        assertEquals(2, alarmRepo.lastSavedState?.alarms?.size)
+        assertEquals(3L, alarmRepo.lastSavedState?.nextAlarmId)
     }
 }
 
@@ -267,5 +337,20 @@ private class FakeAlarmScheduler(
 
     override fun cancel(alarmId: Long) {
         lastCanceledAlarmId = alarmId
+    }
+}
+
+private class FakeAlarmStateRepository(
+    initialState: PersistedAlarmState = PersistedAlarmState()
+) : AlarmStateRepository {
+
+    private val stateFlow = MutableStateFlow(initialState)
+    var lastSavedState: PersistedAlarmState? = null
+
+    override fun observeAlarmState(): Flow<PersistedAlarmState> = stateFlow
+
+    override suspend fun saveAlarmState(state: PersistedAlarmState) {
+        lastSavedState = state
+        stateFlow.value = state
     }
 }

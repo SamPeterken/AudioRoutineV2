@@ -5,7 +5,7 @@ data class PlaybackProgress(
     val routineName: String = "",
     val currentBlockIndex: Int = -1,
     val totalBlocks: Int = 0,
-    val currentPrompt: String = "",
+    val currentLine: String = "",
     val currentBlockDurationMillis: Long = 0L,
     val currentBlockRemainingMillis: Long = 0L,
     val routineDurationMillis: Long = 0L,
@@ -16,7 +16,7 @@ data class PlaybackProgress(
 
 data class PlaybackActivitySummary(
     val index: Int,
-    val prompt: String,
+    val line: String,
     val plannedDurationMillis: Long
 )
 

@@ -32,7 +32,13 @@ data class MusicSelection(
 
 data class RoutineBlockTtsEvent(
     val offsetSeconds: Long,
-    val text: String
+    val text: String,
+    val recordedPrompt: RecordedPrompt? = null
+)
+
+data class RecordedPrompt(
+    val filePath: String,
+    val durationMillis: Long = 0L
 )
 
 data class RoutineBlock(
@@ -40,6 +46,7 @@ data class RoutineBlock(
     val routineId: Long = 0,
     val position: Int,
     val textToSpeak: String,
+    val recordedPrompt: RecordedPrompt? = null,
     val waitDuration: Duration,
     val musicStyle: String?,
     val musicSelection: MusicSelection? = null,
@@ -49,10 +56,15 @@ data class RoutineBlock(
 fun RoutineBlock.allTtsEvents(): List<RoutineBlockTtsEvent> {
     val startEvent = RoutineBlockTtsEvent(
         offsetSeconds = 0L,
-        text = textToSpeak
+        text = textToSpeak,
+        recordedPrompt = recordedPrompt
     )
     return (listOf(startEvent) + additionalTtsEvents)
-        .filter { it.offsetSeconds >= 0L && it.offsetSeconds <= waitDuration.seconds && it.text.isNotBlank() }
+        .filter {
+            it.offsetSeconds >= 0L &&
+                it.offsetSeconds <= waitDuration.seconds &&
+                (it.recordedPrompt != null || it.text.isNotBlank())
+        }
         .sortedBy { it.offsetSeconds }
 }
 

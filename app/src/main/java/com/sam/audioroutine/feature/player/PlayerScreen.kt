@@ -26,8 +26,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.sam.audioroutine.domain.repo.ForegroundTextMode
+import com.sam.audioroutine.feature.background.AppBackgroundViewModel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -44,11 +50,22 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun PlayerScreen(
     onOpenActivePlayback: () -> Unit,
-    viewModel: PlayerViewModel = hiltViewModel()
+    viewModel: PlayerViewModel = hiltViewModel(),
+    backgroundViewModel: AppBackgroundViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val backgroundUiState by backgroundViewModel.uiState.collectAsStateWithLifecycle()
     val panelShape = RoundedCornerShape(4.dp)
+    val useLightForeground = backgroundUiState.foregroundTextMode == ForegroundTextMode.WHITE
+    val primaryTextColor = if (useLightForeground) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondaryTextColor = if (useLightForeground) {
+        Color.White.copy(alpha = 0.86f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val outlineColor = primaryTextColor
+    val translucentForegroundColor = MaterialTheme.colorScheme.onSurface
 
     Column(
         modifier = Modifier
@@ -57,25 +74,30 @@ fun PlayerScreen(
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Play\nthe ritual", style = MaterialTheme.typography.displaySmall)
+        Text(
+            "Play\nthe ritual",
+            style = MaterialTheme.typography.displaySmall,
+            color = primaryTextColor
+        )
         Text(
             "Start your saved sequence and keep the session focused.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = secondaryTextColor
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(color = outlineColor)
 
         val routine = uiState.latestRoutine
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, panelShape)
+                .border(1.dp, outlineColor, panelShape)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             if (routine == null) {
                 Text(
                     "No saved routine yet. Build one in the Routine tab.",
-                    style = MaterialTheme.typography.bodyLarge
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = primaryTextColor
                 )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -84,11 +106,15 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.tertiary
                     )
-                    Text(routine.name, style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        routine.name,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = primaryTextColor
+                    )
                     Text(
                         "${routine.blocks.size} blocks prepared",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = secondaryTextColor
                     )
                 }
             }
@@ -99,20 +125,24 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, MaterialTheme.colorScheme.tertiary, panelShape)
+                    .border(1.dp, outlineColor, panelShape)
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         "NOW PLAYING",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.tertiary
+                        color = primaryTextColor
                     )
-                    Text(progress.currentPrompt, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        progress.currentLine,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = primaryTextColor
+                    )
                     Text(
                         "Step ${progress.currentBlockIndex + 1} of ${progress.totalBlocks}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = secondaryTextColor
                     )
                 }
             }
@@ -135,16 +165,17 @@ fun PlayerScreen(
             Text("Start Routine")
         }
 
-        Button(
+        OutlinedButton(
             onClick = { stopPlaybackService(context) },
             modifier = Modifier.fillMaxWidth(),
             shape = panelShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.secondary,
-                contentColor = MaterialTheme.colorScheme.onSecondary
+            border = androidx.compose.foundation.BorderStroke(1.dp, translucentForegroundColor),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
+                contentColor = translucentForegroundColor
             )
         ) {
-            Text("Stop")
+            Text("Stop Routine")
         }
     }
 }
@@ -152,32 +183,42 @@ fun PlayerScreen(
 @Composable
 fun ActivePlaybackScreen(
     onExitPlayback: () -> Unit,
-    viewModel: PlayerViewModel = hiltViewModel()
+    viewModel: PlayerViewModel = hiltViewModel(),
+    backgroundViewModel: AppBackgroundViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val backgroundUiState by backgroundViewModel.uiState.collectAsStateWithLifecycle()
     val progress = uiState.playbackProgress
     val panelShape = RoundedCornerShape(4.dp)
     val finishTimeFormatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
+    val useLightForeground = backgroundUiState.foregroundTextMode == ForegroundTextMode.WHITE
+    val primaryTextColor = if (useLightForeground) Color.White else MaterialTheme.colorScheme.onSurface
+    val secondaryTextColor = if (useLightForeground) {
+        Color.White.copy(alpha = 0.86f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val outlineColor = primaryTextColor
+    val translucentForegroundColor = MaterialTheme.colorScheme.onSurface
+    var hasSeenRunningPlayback by rememberSaveable { mutableStateOf(progress.isRunning) }
+
+    LaunchedEffect(progress.isRunning) {
+        if (shouldAutoExitPlayback(
+                hasSeenRunningPlayback = hasSeenRunningPlayback,
+                isRunning = progress.isRunning
+            )
+        ) {
+            onExitPlayback()
+            return@LaunchedEffect
+        }
+        if (progress.isRunning) {
+            hasSeenRunningPlayback = true
+        }
+    }
 
     if (!progress.isRunning) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Transparent)
-                .padding(horizontal = 20.dp, vertical = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text("Routine complete", style = MaterialTheme.typography.displaySmall)
-            Text(
-                "Playback is not active.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Button(onClick = onExitPlayback, modifier = Modifier.fillMaxWidth(), shape = panelShape) {
-                Text("Back to Play")
-            }
-        }
+        Box(modifier = Modifier.fillMaxSize())
         return
     }
 
@@ -206,16 +247,25 @@ fun ActivePlaybackScreen(
                 Text(
                     "NOW PLAYING",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.tertiary
+                    color = primaryTextColor
                 )
-                Text(progress.routineName, style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    progress.routineName,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = primaryTextColor
+                )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text("Finishes", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Finishes",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = primaryTextColor
+                )
                 Text(
                     formatClockTime(progress.projectedFinishEpochMillis, finishTimeFormatter),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = primaryTextColor
                 )
             }
         }
@@ -223,16 +273,20 @@ fun ActivePlaybackScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, panelShape)
+                .border(1.dp, outlineColor, panelShape)
                 .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     "Activity ${progress.currentBlockIndex + 1} of ${progress.totalBlocks}",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = secondaryTextColor
                 )
-                Text(progress.currentPrompt, style = MaterialTheme.typography.headlineLarge)
+                Text(
+                    progress.currentLine,
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = primaryTextColor
+                )
                 LinearProgressIndicator(
                     progress = { currentBlockProgress },
                     modifier = Modifier.fillMaxWidth(),
@@ -242,12 +296,13 @@ fun ActivePlaybackScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         "${formatDuration(progress.currentBlockRemainingMillis)} left",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = primaryTextColor
                     )
                     Text(
                         formatDuration(progress.currentBlockDurationMillis),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = secondaryTextColor
                     )
                 }
             }
@@ -256,11 +311,15 @@ fun ActivePlaybackScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, panelShape)
+                .border(1.dp, outlineColor, panelShape)
                 .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Whole Routine", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Whole Routine",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = primaryTextColor
+                )
                 LinearProgressIndicator(
                     progress = { routineProgress },
                     modifier = Modifier.fillMaxWidth(),
@@ -270,23 +329,28 @@ fun ActivePlaybackScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         "${formatDuration(progress.routineRemainingMillis)} left",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = primaryTextColor
                     )
                     Text(
                         "Step ${progress.currentBlockIndex + 1}/${progress.totalBlocks}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = secondaryTextColor
                     )
                 }
             }
         }
 
-        Text("Upcoming", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Upcoming",
+            style = MaterialTheme.typography.titleMedium,
+            color = primaryTextColor
+        )
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, panelShape)
+                .border(1.dp, outlineColor, panelShape)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -294,18 +358,18 @@ fun ActivePlaybackScreen(
                 val isCurrent = activity.index == progress.currentBlockIndex
                 Column {
                     Text(
-                        "${activity.index + 1}. ${activity.prompt}",
+                        "${activity.index + 1}. ${activity.line}",
                         style = if (isCurrent) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
-                        color = if (isCurrent) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isCurrent) primaryTextColor else secondaryTextColor,
                         fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal
                     )
                     Text(
                         formatDuration(activity.plannedDurationMillis),
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = secondaryTextColor
                     )
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(color = outlineColor)
             }
         }
 
@@ -339,13 +403,26 @@ fun ActivePlaybackScreen(
                     onExitPlayback()
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = panelShape
+                shape = panelShape,
+                border = androidx.compose.foundation.BorderStroke(1.dp, translucentForegroundColor),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
+                    contentColor = translucentForegroundColor
+                )
             ) {
                 Text("Stop Routine")
             }
             Spacer(modifier = Modifier.height(2.dp))
         }
     }
+}
+
+internal fun shouldAutoExitPlayback(hasSeenRunningPlayback: Boolean, isRunning: Boolean): Boolean {
+    return hasSeenRunningPlayback && !isRunning
+}
+
+internal fun shouldForceActivePlaybackRoute(isRunning: Boolean, currentRoute: String?): Boolean {
+    return isRunning && currentRoute != "player_playback"
 }
 
 private fun startPlaybackService(context: Context, routineId: Long?) {

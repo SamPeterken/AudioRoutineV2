@@ -78,12 +78,12 @@ fun BlockTimedTtsEditor(
             )
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = "Add more TTS",
+                    text = "Add more lines",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Optional. Start prompt at 0m 0s is always included.",
+                    text = "Optional. A start line at 0m 0s is always included.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -95,12 +95,16 @@ fun BlockTimedTtsEditor(
         }
 
         Text(
-            text = "Timed TTS",
+            text = "Scheduled lines",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "0m 0s • ${block.textToSpeak.ifBlank { "(empty start prompt)" }}",
+            text = if (block.recordedPrompt != null) {
+                "0m 0s • Recorded prompt"
+            } else {
+                "0m 0s • ${block.textToSpeak.ifBlank { "(empty start line)" }}"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -156,26 +160,58 @@ fun BlockTimedTtsEditor(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
                 )
-                OutlinedTextField(
-                    value = event.text,
-                    onValueChange = {
-                        viewModel.updateBlockTtsEventText(
-                            index = blockIndex,
-                            eventIndex = eventIndex,
-                            value = it
-                        )
-                    },
-                    modifier = Modifier.weight(0.5f),
-                    label = { Text("Speak") },
-                    singleLine = true
-                )
+                if (event.recordedPrompt == null) {
+                    OutlinedTextField(
+                        value = event.text,
+                        onValueChange = {
+                            viewModel.updateBlockTtsEventText(
+                                index = blockIndex,
+                                eventIndex = eventIndex,
+                                value = it
+                            )
+                        },
+                        modifier = Modifier.weight(0.5f),
+                        label = { Text("Line") },
+                        singleLine = true,
+                        trailingIcon = {
+                            MicRecordIconButton { filePath, durationMillis ->
+                                viewModel.setBlockTtsEventRecordedPrompt(
+                                    index = blockIndex,
+                                    eventIndex = eventIndex,
+                                    filePath = filePath,
+                                    durationMillis = durationMillis
+                                )
+                            }
+                        }
+                    )
+                } else {
+                    RecordedPromptCompactRow(
+                        filePath = event.recordedPrompt.filePath,
+                        durationMillis = event.recordedPrompt.durationMillis,
+                        onReplaceRecording = { filePath, durationMillis ->
+                            viewModel.setBlockTtsEventRecordedPrompt(
+                                index = blockIndex,
+                                eventIndex = eventIndex,
+                                filePath = filePath,
+                                durationMillis = durationMillis
+                            )
+                        },
+                        onDeleteRecording = {
+                            viewModel.clearBlockTtsEventRecordedPrompt(
+                                index = blockIndex,
+                                eventIndex = eventIndex
+                            )
+                        },
+                        modifier = Modifier.weight(0.5f)
+                    )
+                }
                 IconButton(
                     onClick = { viewModel.removeBlockTtsEvent(index = blockIndex, eventIndex = eventIndex) },
                     modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Delete,
-                        contentDescription = "Remove TTS event"
+                        contentDescription = "Remove scheduled line"
                     )
                 }
             }
@@ -206,8 +242,22 @@ fun BlockTimedTtsEditor(
             value = newEventText,
             onValueChange = { newEventText = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Prompt text") },
-            singleLine = true
+            label = { Text("Line text") },
+            singleLine = true,
+            trailingIcon = {
+                MicRecordIconButton { filePath, durationMillis ->
+                    val minutes = newOffsetMinutes.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                    val seconds = newOffsetSeconds.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+                    val totalSeconds = (minutes * 60L) + seconds
+                    viewModel.addBlockRecordedTtsEvent(
+                        index = blockIndex,
+                        offsetSecondsInput = totalSeconds.toString(),
+                        filePath = filePath,
+                        durationMillis = durationMillis
+                    )
+                    newEventText = ""
+                }
+            }
         )
         Button(
             onClick = {
@@ -223,7 +273,7 @@ fun BlockTimedTtsEditor(
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Add Prompt")
+            Text("Add Line")
         }
 
         Row(
@@ -246,7 +296,7 @@ fun BlockTimedTtsEditor(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Edit countdown times, then press Done to add them to Timed TTS.",
+                    text = "Edit countdown times, then press Done to add them to scheduled lines.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -8,7 +8,7 @@ object PlaybackProgressCalculator {
         routineName: String,
         orderedBlocks: List<RoutineBlock>,
         currentBlockIndex: Int,
-        currentPrompt: String,
+        currentLine: String,
         nowEpochMillis: Long,
         routineStartEpochMillis: Long,
         additionalDurationMillisByIndex: Map<Int, Long> = emptyMap(),
@@ -38,7 +38,7 @@ object PlaybackProgressCalculator {
             routineName = routineName,
             currentBlockIndex = currentBlockIndex,
             totalBlocks = orderedBlocks.size,
-            currentPrompt = currentPrompt,
+            currentLine = currentLine,
             currentBlockDurationMillis = currentBlockDuration,
             currentBlockRemainingMillis = currentBlockRemaining,
             routineDurationMillis = totalRoutineDuration,
@@ -47,7 +47,7 @@ object PlaybackProgressCalculator {
             upcomingActivities = orderedBlocks.mapIndexed { index, block ->
                 PlaybackActivitySummary(
                     index = index,
-                    prompt = block.textToSpeak,
+                    line = block.textToSpeak.ifBlank { "Recorded prompt" },
                     plannedDurationMillis = blockDurations[index]
                 )
             }

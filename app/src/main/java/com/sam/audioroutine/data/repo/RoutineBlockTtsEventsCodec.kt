@@ -1,5 +1,6 @@
 package com.sam.audioroutine.data.repo
 
+import com.sam.audioroutine.domain.model.RecordedPrompt
 import com.sam.audioroutine.domain.model.RoutineBlockTtsEvent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
@@ -25,6 +26,10 @@ internal object RoutineBlockTtsEventsCodec {
                     buildJsonObject {
                         put(OFFSET_SECONDS_KEY, event.offsetSeconds)
                         put(TEXT_KEY, event.text)
+                        event.recordedPrompt?.let { prompt ->
+                            put(RECORDED_PROMPT_FILE_PATH_KEY, prompt.filePath)
+                            put(RECORDED_PROMPT_DURATION_MILLIS_KEY, prompt.durationMillis)
+                        }
                     }
                 )
             }
@@ -41,8 +46,13 @@ internal object RoutineBlockTtsEventsCodec {
                     val item = element.jsonObject
                     val offsetSeconds = item[OFFSET_SECONDS_KEY]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
                     val text = item[TEXT_KEY]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-                    if (offsetSeconds >= 0L && text.isNotBlank()) {
-                        RoutineBlockTtsEvent(offsetSeconds = offsetSeconds, text = text)
+                    val recordedPrompt = item.toRecordedPromptOrNull()
+                    if (offsetSeconds >= 0L && (text.isNotBlank() || recordedPrompt != null)) {
+                        RoutineBlockTtsEvent(
+                            offsetSeconds = offsetSeconds,
+                            text = text,
+                            recordedPrompt = recordedPrompt
+                        )
                     } else {
                         null
                     }
@@ -52,6 +62,23 @@ internal object RoutineBlockTtsEventsCodec {
         }
     }
 
+    private fun Map<String, kotlinx.serialization.json.JsonElement>.toRecordedPromptOrNull(): RecordedPrompt? {
+        val filePath = this[RECORDED_PROMPT_FILE_PATH_KEY]
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?.trim()
+            .orEmpty()
+        if (filePath.isBlank()) return null
+        val durationMillis = this[RECORDED_PROMPT_DURATION_MILLIS_KEY]
+            ?.jsonPrimitive
+            ?.longOrNull
+            ?.coerceAtLeast(0L)
+            ?: 0L
+        return RecordedPrompt(filePath = filePath, durationMillis = durationMillis)
+    }
+
     private const val OFFSET_SECONDS_KEY = "offsetSeconds"
     private const val TEXT_KEY = "text"
+    private const val RECORDED_PROMPT_FILE_PATH_KEY = "recordedPromptFilePath"
+    private const val RECORDED_PROMPT_DURATION_MILLIS_KEY = "recordedPromptDurationMillis"
 }

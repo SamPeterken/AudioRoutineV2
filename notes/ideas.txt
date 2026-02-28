@@ -1,5 +1,3 @@
 Add option for continue music from the last block. The reason for this is that you might want to continue the same music and not have it cut out and start again. This will meant that any calculations you do comparing block length against length of audio playback will have to include this next block too. 
 
-Can you see the total running time for the the selected audio? if so compare against the length of the block, and present as a sort of progress bar. if the audio<block time, then add a note in small text explaining, that the audio will repeat. 
-
-When the routine finishes it should take you back to the routine page automatically
+When routine playing there should be an android notification which takes you to the app when tapped, and reappears if there's a routine playing and you want to back out of the app, so you can get back to the playing routine. 

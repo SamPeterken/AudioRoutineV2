@@ -1,5 +1,8 @@
 package com.sam.audioroutine.feature.routine
 
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +19,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -23,16 +27,21 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.sam.audioroutine.data.bundled.BundledMediaCatalog
 import com.sam.audioroutine.domain.model.MusicSelectionType
 import com.sam.audioroutine.domain.model.MusicSourceType
 import com.sam.audioroutine.domain.model.RoutineBlock
 import com.sam.audioroutine.feature.player.music.FreeCatalogLibrary
 import com.sam.audioroutine.feature.player.music.MusicPlaylistCodec
 import com.sam.audioroutine.feature.player.music.PlaylistSong
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,13 +52,25 @@ fun BlockMusicEditor(
     onPickLocalFiles: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val selectedSongs = remember(block.musicSelection, block.musicStyle) {
         songsForBlock(block)
+    }
+    val durationByUri = rememberSongDurationSecondsByUri(context = context, songs = selectedSongs)
+    val totalAudioSeconds = remember(selectedSongs, durationByUri.value) {
+        if (selectedSongs.isEmpty()) return@remember null
+        if (durationByUri.value.size != selectedSongs.size) return@remember null
+        selectedSongs.sumOf { song -> durationByUri.value[song.uri] ?: 0L }
+    }
+    val audioCoverage = remember(totalAudioSeconds, block.waitDuration.seconds) {
+        totalAudioSeconds?.let { calculateAudioCoverage(totalAudioSeconds = it, blockSeconds = block.waitDuration.seconds) }
     }
     val isRandomOrder = block.musicSelection?.type != MusicSelectionType.PLAYLIST
     var showSongs by remember(blockIndex, selectedSongs.size) { mutableStateOf(selectedSongs.isNotEmpty()) }
     var addTrackExpanded by remember(blockIndex) { mutableStateOf(false) }
+    var addBundledTrackExpanded by remember(blockIndex) { mutableStateOf(false) }
     val allTracks = remember { FreeCatalogLibrary.allTracks() }
+    val bundledTracks = remember(context) { BundledMediaCatalog.listBundledAudioTracks(context) }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -114,7 +135,27 @@ fun BlockMusicEditor(
             )
         }
 
+        if (audioCoverage != null) {
+            Text(
+                text = "Audio ${formatTrackDuration(audioCoverage.totalAudioSeconds)} / Block ${formatTrackDuration(audioCoverage.blockSeconds)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            LinearProgressIndicator(
+                progress = { audioCoverage.progressFraction },
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (audioCoverage.repeats) {
+                Text(
+                    text = "Audio is shorter than this block and will repeat.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         selectedSongs.forEachIndexed { songIndex, song ->
+            val durationText = formatTrackDuration(durationByUri.value[song.uri])
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -126,6 +167,11 @@ fun BlockMusicEditor(
                     modifier = Modifier.weight(1f),
                     label = { Text(if (song.source == MusicSourceType.FREE_CATALOG) "Built-in" else "Local") },
                     singleLine = true
+                )
+                Text(
+                    text = durationText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 IconButton(
                     onClick = { viewModel.removeBlockSong(blockIndex, songIndex) },
@@ -169,6 +215,51 @@ fun BlockMusicEditor(
                             addTrackExpanded = false
                         }
                     )
+                }
+            }
+        }
+
+        ExposedDropdownMenuBox(
+            expanded = addBundledTrackExpanded,
+            onExpandedChange = { addBundledTrackExpanded = !addBundledTrackExpanded },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            OutlinedTextField(
+                value = "Add bundled song",
+                onValueChange = {},
+                readOnly = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor(),
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = addBundledTrackExpanded)
+                },
+                singleLine = true
+            )
+
+            DropdownMenu(
+                expanded = addBundledTrackExpanded,
+                onDismissRequest = { addBundledTrackExpanded = false }
+            ) {
+                if (bundledTracks.isEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("No bundled songs found in assets/bundled_audio") },
+                        onClick = { addBundledTrackExpanded = false }
+                    )
+                } else {
+                    bundledTracks.forEach { track ->
+                        DropdownMenuItem(
+                            text = { Text(track.title) },
+                            onClick = {
+                                viewModel.addBlockBundledSong(
+                                    index = blockIndex,
+                                    title = track.title,
+                                    assetUri = track.mediaUri
+                                )
+                                addBundledTrackExpanded = false
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -229,4 +320,39 @@ private fun songsForBlock(block: RoutineBlock): List<PlaylistSong> {
         )
     }
     return emptyList()
+}
+
+@Composable
+private fun rememberSongDurationSecondsByUri(context: Context, songs: List<PlaylistSong>): androidx.compose.runtime.State<Map<String, Long?>> {
+    val songUris = remember(songs) { songs.map { it.uri } }
+    val byUri = remember(songUris) { songs.associateBy { it.uri } }
+    return produceState<Map<String, Long?>>(initialValue = emptyMap(), key1 = songUris) {
+        value = withContext(Dispatchers.IO) {
+            songUris.associateWith { uri ->
+                val song = byUri[uri] ?: return@associateWith null
+                resolveSongDurationSeconds(context = context, song = song)
+            }
+        }
+    }
+}
+
+private fun resolveSongDurationSeconds(context: Context, song: PlaylistSong): Long? {
+    val uri = Uri.parse(song.uri)
+    val retriever = MediaMetadataRetriever()
+    return runCatching {
+        val isLocalUri = uri.scheme.equals("content", ignoreCase = true) ||
+            uri.scheme.equals("file", ignoreCase = true)
+        if (isLocalUri) {
+            retriever.setDataSource(context, uri)
+        } else {
+            retriever.setDataSource(song.uri, emptyMap())
+        }
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            ?.toLongOrNull()
+            ?.div(1000L)
+            ?.coerceAtLeast(0L)
+            ?.takeIf { it > 0L }
+    }.getOrNull().also {
+        retriever.release()
+    }
 }

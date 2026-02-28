@@ -1,0 +1,70 @@
+{
+  "name": "Morning Routine",
+  "blocks": [
+    {
+      "position": 0,
+      "textToSpeak": "Wake up",
+      "waitDurationSeconds": 120,
+      "musicStyle": "SoundHelix 1 - Calm Ambient",
+      "musicSelection": {
+        "source": "FREE_CATALOG",
+        "type": "TRACK",
+        "sourceId": "soundhelix-1-calm-ambient",
+        "displayName": "SoundHelix 1 - Calm Ambient"
+      },
+      "additionalTtsEvents": []
+    },
+    {
+      "position": 1,
+      "textToSpeak": "Drink a glass of water",
+      "waitDurationSeconds": 120,
+      "musicStyle": "SoundHelix 2 - Focus Lofi",
+      "musicSelection": {
+        "source": "FREE_CATALOG",
+        "type": "TRACK",
+        "sourceId": "soundhelix-2-focus-lofi",
+        "displayName": "SoundHelix 2 - Focus Lofi"
+      },
+      "additionalTtsEvents": []
+    },
+    {
+      "position": 2,
+      "textToSpeak": "Exercise",
+      "waitDurationSeconds": 1200,
+      "musicStyle": "SoundHelix 1 - Uplift Lofi",
+      "musicSelection": {
+        "source": "FREE_CATALOG",
+        "type": "TRACK",
+        "sourceId": "soundhelix-1-uplift-lofi",
+        "displayName": "SoundHelix 1 - Uplift Lofi"
+      },
+      "additionalTtsEvents": []
+    },
+    {
+      "position": 3,
+      "textToSpeak": "Take a shower",
+      "waitDurationSeconds": 600,
+      "musicStyle": "Jazz Uplift Electronic",
+      "musicSelection": {
+        "source": "FREE_CATALOG",
+        "type": "TRACK",
+        "sourceId": "jazz-uplift-electronic",
+        "displayName": "Jazz Uplift Electronic"
+      },
+      "additionalTtsEvents": []
+    },
+    {
+      "position": 4,
+      "textToSpeak": "Meditate",
+      "waitDurationSeconds": 600,
+      "musicStyle": "Sample Piano Mindful",
+      "musicSelection": {
+        "source": "FREE_CATALOG",
+        "type": "TRACK",
+        "sourceId": "sample-piano-mindful",
+        "displayName": "Sample Piano Mindful"
+      },
+      "additionalTtsEvents": []
+    }
+  ]
+}

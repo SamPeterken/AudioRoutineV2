@@ -7,6 +7,7 @@ import com.sam.audioroutine.data.db.RoutineWithBlocks
 import com.sam.audioroutine.domain.model.MusicSelection
 import com.sam.audioroutine.domain.model.MusicSelectionType
 import com.sam.audioroutine.domain.model.MusicSourceType
+import com.sam.audioroutine.domain.model.RecordedPrompt
 import com.sam.audioroutine.domain.model.Routine
 import com.sam.audioroutine.domain.model.RoutineBlock
 import com.sam.audioroutine.domain.repo.RoutineRepository
@@ -32,10 +33,12 @@ class RoutineRepositoryImpl @Inject constructor(
         val routineId = routineDao.upsertRoutine(RoutineEntity(id = routine.id, name = routine.name))
         val blocks = routine.blocks.mapIndexed { index, block ->
             RoutineBlockEntity(
-                id = block.id,
+                id = if (block.id > 0L) block.id else 0L,
                 routineId = if (routine.id == 0L) routineId else routine.id,
                 position = index,
                 textToSpeak = block.textToSpeak,
+                recordedPromptFilePath = block.recordedPrompt?.filePath,
+                recordedPromptDurationMillis = block.recordedPrompt?.durationMillis ?: 0L,
                 waitDurationSeconds = block.waitDuration.seconds,
                 musicStyle = block.musicStyle,
                 musicSource = block.musicSelection?.source?.name,
@@ -75,6 +78,7 @@ class RoutineRepositoryImpl @Inject constructor(
                     routineId = it.routineId,
                     position = it.position,
                     textToSpeak = it.textToSpeak,
+                    recordedPrompt = it.toRecordedPromptOrNull(),
                     waitDuration = Duration.ofSeconds(it.waitDurationSeconds),
                     musicStyle = it.musicStyle,
                     musicSelection = it.toMusicSelectionOrNull(),
@@ -84,6 +88,15 @@ class RoutineRepositoryImpl @Inject constructor(
         )
 
     private fun RoutineWithBlocks.toDomain(): Routine = routine.toDomain(blocks)
+
+    private fun RoutineBlockEntity.toRecordedPromptOrNull(): RecordedPrompt? {
+        val filePath = recordedPromptFilePath?.trim().orEmpty()
+        if (filePath.isBlank()) return null
+        return RecordedPrompt(
+            filePath = filePath,
+            durationMillis = recordedPromptDurationMillis.coerceAtLeast(0L)
+        )
+    }
 
     private fun RoutineBlockEntity.toMusicSelectionOrNull(): MusicSelection? {
         val source = musicSource.toMusicSourceTypeOrNull() ?: return null

@@ -71,7 +71,7 @@ class PlayerViewModelTest {
             PlaybackProgress(
                 isRunning = true,
                 routineName = "Routine",
-                currentPrompt = "Move",
+                currentLine = "Move",
                 currentBlockIndex = 1,
                 totalBlocks = 3,
                 currentBlockDurationMillis = 180000,
@@ -80,15 +80,15 @@ class PlayerViewModelTest {
                 routineRemainingMillis = 420000,
                 projectedFinishEpochMillis = 1234567890,
                 upcomingActivities = listOf(
-                    PlaybackActivitySummary(index = 1, prompt = "Move", plannedDurationMillis = 180000),
-                    PlaybackActivitySummary(index = 2, prompt = "Cool down", plannedDurationMillis = 120000)
+                    PlaybackActivitySummary(index = 1, line = "Move", plannedDurationMillis = 180000),
+                    PlaybackActivitySummary(index = 2, line = "Cool down", plannedDurationMillis = 120000)
                 )
             )
         )
 
         advanceUntilIdle()
 
-        assertEquals("Move", viewModel.uiState.value.playbackProgress.currentPrompt)
+        assertEquals("Move", viewModel.uiState.value.playbackProgress.currentLine)
         assertEquals(1, viewModel.uiState.value.playbackProgress.currentBlockIndex)
         assertEquals(3, viewModel.uiState.value.playbackProgress.totalBlocks)
         assertEquals(60000, viewModel.uiState.value.playbackProgress.currentBlockRemainingMillis)

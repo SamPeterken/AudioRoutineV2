@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -64,10 +65,12 @@ fun ScheduleScreen(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val cardColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+    val cardColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f)
+    val translucentForegroundColor = MaterialTheme.colorScheme.onSurface
+    val translucentSecondaryForegroundColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f)
     val outlinedButtonColors = ButtonDefaults.outlinedButtonColors(
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.52f),
-        contentColor = primaryTextColor
+        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
+        contentColor = translucentForegroundColor
     )
 
     Column(
@@ -90,7 +93,8 @@ fun ScheduleScreen(
             OutlinedButton(
                 onClick = viewModel::addAlarm,
                 shape = panelShape,
-                colors = outlinedButtonColors
+                colors = outlinedButtonColors,
+                border = BorderStroke(1.dp, translucentForegroundColor)
             ) {
                 Text("Add alarm")
             }
@@ -116,8 +120,8 @@ fun ScheduleScreen(
                 onToggleDay = { day -> viewModel.toggleDay(alarm.alarmId, day) },
                 endTime = viewModel.computedEndTime(alarm),
                 selectedRoutine = viewModel.selectedRoutine(alarm),
-                primaryTextColor = primaryTextColor,
-                secondaryTextColor = secondaryTextColor,
+                primaryTextColor = translucentForegroundColor,
+                secondaryTextColor = translucentSecondaryForegroundColor,
                 cardColor = cardColor,
                 outlinedButtonColors = outlinedButtonColors
             )
@@ -250,7 +254,8 @@ private fun AlarmCard(
                         onClick = { onPickTime(TimeInputMode.START) },
                         enabled = alarm.timeInputMode == TimeInputMode.START,
                         modifier = Modifier.weight(1f),
-                        colors = outlinedButtonColors
+                        colors = outlinedButtonColors,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface)
                     ) {
                         Text("Start $startText")
                     }
@@ -258,7 +263,8 @@ private fun AlarmCard(
                         onClick = { onPickTime(TimeInputMode.END) },
                         enabled = alarm.timeInputMode == TimeInputMode.END,
                         modifier = Modifier.weight(1f),
-                        colors = outlinedButtonColors
+                        colors = outlinedButtonColors,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface)
                     ) {
                         Text("End $endText")
                     }
@@ -267,7 +273,8 @@ private fun AlarmCard(
                 OutlinedButton(
                     onClick = onDeleteAlarm,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = outlinedButtonColors
+                    colors = outlinedButtonColors,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface)
                 ) {
                     Text("Delete alarm")
                 }
@@ -338,7 +345,8 @@ private fun RoutinePicker(
             onClick = { expanded = true },
             modifier = Modifier.fillMaxWidth(),
             enabled = enabled,
-            colors = outlinedButtonColors
+            colors = outlinedButtonColors,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface)
         ) {
             Text(selectedName)
         }

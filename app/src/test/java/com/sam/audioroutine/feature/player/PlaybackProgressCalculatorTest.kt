@@ -23,7 +23,7 @@ class PlaybackProgressCalculatorTest {
             routineName = "Morning Routine",
             orderedBlocks = blocks,
             currentBlockIndex = 0,
-            currentPrompt = "Wake up",
+            currentLine = "Wake up",
             nowEpochMillis = 60_000L,
             routineStartEpochMillis = 0L
         )
@@ -49,7 +49,7 @@ class PlaybackProgressCalculatorTest {
             routineName = "Morning Routine",
             orderedBlocks = blocks,
             currentBlockIndex = 1,
-            currentPrompt = "Stretch",
+            currentLine = "Stretch",
             nowEpochMillis = 540_000L,
             routineStartEpochMillis = 0L
         )
@@ -71,7 +71,7 @@ class PlaybackProgressCalculatorTest {
             routineName = "Morning Routine",
             orderedBlocks = blocks,
             currentBlockIndex = 0,
-            currentPrompt = "Wake up",
+            currentLine = "Wake up",
             nowEpochMillis = 120_000L,
             routineStartEpochMillis = 0L,
             additionalDurationMillisByIndex = mapOf(0 to 60_000L)
@@ -94,7 +94,7 @@ class PlaybackProgressCalculatorTest {
             routineName = "Morning Routine",
             orderedBlocks = blocks,
             currentBlockIndex = 1,
-            currentPrompt = "Stretch",
+            currentLine = "Stretch",
             nowEpochMillis = 60_000L,
             routineStartEpochMillis = 0L
         )
@@ -103,7 +103,7 @@ class PlaybackProgressCalculatorTest {
             routineName = "Morning Routine",
             orderedBlocks = blocks,
             currentBlockIndex = 1,
-            currentPrompt = "Stretch",
+            currentLine = "Stretch",
             nowEpochMillis = 60_000L,
             routineStartEpochMillis = 0L,
             elapsedAdjustmentMillis = 240_000L

@@ -4,10 +4,14 @@ import android.content.Context
 import androidx.room.Room
 import com.sam.audioroutine.data.db.AudioRoutineDatabase
 import com.sam.audioroutine.data.db.RoutineDao
+import com.sam.audioroutine.data.repo.AlarmStateRepositoryImpl
 import com.sam.audioroutine.data.repo.AppBackgroundRepositoryImpl
+import com.sam.audioroutine.data.repo.AssetRoutineSeedSource
 import com.sam.audioroutine.data.repo.RoutineRepositoryImpl
+import com.sam.audioroutine.domain.repo.AlarmStateRepository
 import com.sam.audioroutine.domain.repo.AppBackgroundRepository
 import com.sam.audioroutine.domain.repo.RoutineRepository
+import com.sam.audioroutine.domain.repo.RoutineSeedSource
 import com.sam.audioroutine.feature.player.music.BlockMusicResolver
 import com.sam.audioroutine.feature.player.music.BlockMusicResolverImpl
 import com.sam.audioroutine.feature.player.music.DuckingMusicPromptPolicy
@@ -40,7 +44,8 @@ object DatabaseModule {
             "audio_routine.db"
         ).addMigrations(
             AudioRoutineDatabase.MIGRATION_1_2,
-            AudioRoutineDatabase.MIGRATION_2_3
+            AudioRoutineDatabase.MIGRATION_2_3,
+            AudioRoutineDatabase.MIGRATION_3_4
         )
             .build()
     }
@@ -54,6 +59,12 @@ object DatabaseModule {
 abstract class RepositoryModule {
     @Binds
     abstract fun bindRoutineRepository(impl: RoutineRepositoryImpl): RoutineRepository
+
+    @Binds
+    abstract fun bindRoutineSeedSource(impl: AssetRoutineSeedSource): RoutineSeedSource
+
+    @Binds
+    abstract fun bindAlarmStateRepository(impl: AlarmStateRepositoryImpl): AlarmStateRepository
 
     @Binds
     abstract fun bindAppBackgroundRepository(impl: AppBackgroundRepositoryImpl): AppBackgroundRepository

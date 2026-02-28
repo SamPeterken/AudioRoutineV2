@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +99,8 @@ fun RoutineEditorScreen(
     val blockShape = RoundedCornerShape(4.dp)
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    var draggingBlockIndex by remember { mutableStateOf<Int?>(null) }
+    var draggingBlockKey by remember { mutableStateOf<Long?>(null) }
+    var draggingBlockIndexFallback by remember { mutableStateOf<Int?>(null) }
     var expandedIndex by remember { mutableStateOf<Int?>(null) }
     var pendingFocusIndex by remember { mutableStateOf<Int?>(null) }
     var shouldFocusAddedBlock by remember { mutableStateOf(false) }
@@ -131,6 +133,19 @@ fun RoutineEditorScreen(
         focusedPlaceholderColor = secondaryTextColor,
         unfocusedPlaceholderColor = secondaryTextColor,
         cursorColor = primaryTextColor
+    )
+    val translucentForegroundColor = MaterialTheme.colorScheme.onSurface
+    val translucentSecondaryForegroundColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val translucentTextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = translucentForegroundColor,
+        unfocusedBorderColor = translucentForegroundColor,
+        focusedTextColor = translucentForegroundColor,
+        unfocusedTextColor = translucentForegroundColor,
+        focusedLabelColor = translucentForegroundColor,
+        unfocusedLabelColor = translucentForegroundColor,
+        focusedPlaceholderColor = translucentSecondaryForegroundColor,
+        unfocusedPlaceholderColor = translucentSecondaryForegroundColor,
+        cursorColor = translucentForegroundColor
     )
 
     val localAudioPickerLauncher = rememberLauncherForActivityResult(
@@ -198,7 +213,8 @@ fun RoutineEditorScreen(
             expandedIndex = newIndex
             pendingFocusIndex = newIndex
             listState.animateScrollToItem(newIndex)
-            draggingBlockIndex = null
+            draggingBlockKey = null
+            draggingBlockIndexFallback = null
             draggingOffsetY = 0f
             shouldFocusAddedBlock = false
         }
@@ -209,11 +225,12 @@ fun RoutineEditorScreen(
         expandedIndex = null
         pendingFocusIndex = null
         shouldFocusAddedBlock = false
-        draggingBlockIndex = null
+        draggingBlockKey = null
+        draggingBlockIndexFallback = null
         draggingOffsetY = 0f
     }
 
-    val draggingIndex = draggingBlockIndex ?: -1
+    val draggingKey = draggingBlockKey
 
     Column(
         modifier = Modifier
@@ -244,7 +261,7 @@ fun RoutineEditorScreen(
             }
         }
         Text(
-            text = "Build a deliberate audio sequence with prompts, waits, and atmosphere.",
+            text = "Build a deliberate audio sequence with lines, waits, and atmosphere.",
             style = MaterialTheme.typography.bodyMedium,
             color = secondaryTextColor
         )
@@ -262,7 +279,7 @@ fun RoutineEditorScreen(
                         containerColor = if (selected) {
                             MaterialTheme.colorScheme.tertiary
                         } else {
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.62f)
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.64f)
                         },
                         contentColor = if (selected) {
                             MaterialTheme.colorScheme.onTertiary
@@ -329,10 +346,11 @@ fun RoutineEditorScreen(
         ) {
             itemsIndexed(
                 items = uiState.blocks,
-                key = { _, block -> if (block.id > 0L) "id-${block.id}" else "pos-${block.position}" }
+                key = { _, block -> block.id }
             ) { index, block ->
+                val itemKey = block.id
                 val isExpanded = expandedIndex == index
-                val isDragging = draggingIndex == index
+                val isDragging = draggingKey == itemKey
                 val promptFocusRequester = remember { FocusRequester() }
                 val dragScale by animateFloatAsState(
                     targetValue = if (isDragging) 1.02f else 1f,
@@ -351,29 +369,47 @@ fun RoutineEditorScreen(
                             scaleY = dragScale
                             shadowElevation = dragElevation.toPx()
                         }
-                        .pointerInput(index, expandedIndex) {
+                        .pointerInput(itemKey, expandedIndex) {
                             if (expandedIndex != null) return@pointerInput
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
-                                    draggingBlockIndex = index
+                                    draggingBlockKey = itemKey
+                                    draggingBlockIndexFallback = index
                                     draggingOffsetY = 0f
                                 },
                                 onDragCancel = {
-                                    draggingBlockIndex = null
+                                    draggingBlockKey = null
+                                    draggingBlockIndexFallback = null
                                     draggingOffsetY = 0f
                                 },
                                 onDragEnd = {
-                                    draggingBlockIndex = null
+                                    draggingBlockKey = null
+                                    draggingBlockIndexFallback = null
                                     draggingOffsetY = 0f
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val activeIndex = draggingBlockIndex
+                                    val activeKey = draggingBlockKey
                                         ?: return@detectDragGesturesAfterLongPress
-                                    if (activeIndex !in latestBlocks.indices) {
-                                        draggingBlockIndex = null
+                                    val resolvedIndex = latestBlocks.indexOfFirst { it.id == activeKey }
+                                    val activeIndex = if (resolvedIndex >= 0) {
+                                        resolvedIndex
+                                    } else {
+                                        draggingBlockIndexFallback ?: -1
+                                    }
+                                    if (activeIndex == -1) {
+                                        draggingBlockKey = null
+                                        draggingBlockIndexFallback = null
+                                        draggingOffsetY = 0f
                                         return@detectDragGesturesAfterLongPress
                                     }
+                                    if (activeIndex !in latestBlocks.indices) {
+                                        draggingBlockKey = null
+                                        draggingBlockIndexFallback = null
+                                        draggingOffsetY = 0f
+                                        return@detectDragGesturesAfterLongPress
+                                    }
+                                    draggingBlockIndexFallback = activeIndex
                                     draggingOffsetY += dragAmount.y
 
                                     val viewportTop = listState.layoutInfo.viewportStartOffset
@@ -412,25 +448,25 @@ fun RoutineEditorScreen(
                                     val fromIndex = activeIndex
                                     val toIndex = targetItemInfo.index
                                     viewModel.moveBlock(fromIndex, toIndex)
-                                    draggingBlockIndex = toIndex
+                                    draggingBlockIndexFallback = toIndex
                                     draggingOffsetY += (currentItemInfo.offset - targetItemInfo.offset).toFloat()
                                 }
                             )
                         },
                     shape = blockShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.64f)
                     ),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .border(
-                                width = if (isDragging) 2.dp else 1.dp,
+                                width = if (isDragging) 2.dp else 0.dp,
                                 color = if (isDragging) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    outlineColor
+                                    Color.Transparent
                                 },
                                 shape = blockShape
                             )
@@ -438,7 +474,7 @@ fun RoutineEditorScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         DisableSelection {
-                            val prompt = block.textToSpeak.ifBlank { "Untitled" }
+                            val line = block.textToSpeak.ifBlank { "Untitled" }
                             val waitSeconds = block.waitDuration.seconds
                             val waitSummary = if (waitSeconds % 60L == 0L) {
                                 "${waitSeconds / 60L}m"
@@ -452,9 +488,9 @@ fun RoutineEditorScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "$prompt • $waitSummary",
+                                    text = "$line • $waitSummary",
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = primaryTextColor,
+                                    color = translucentForegroundColor,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
@@ -463,14 +499,15 @@ fun RoutineEditorScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.MusicNote,
                                         contentDescription = "Has music",
-                                        tint = secondaryTextColor,
+                                        tint = translucentForegroundColor,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
                                 IconButton(
                                     onClick = {
                                         expandedIndex = if (isExpanded) null else index
-                                        draggingBlockIndex = null
+                                        draggingBlockKey = null
+                                        draggingBlockIndexFallback = null
                                         draggingOffsetY = 0f
                                     },
                                     modifier = Modifier.size(28.dp)
@@ -478,7 +515,7 @@ fun RoutineEditorScreen(
                                     Icon(
                                         imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                                         contentDescription = if (isExpanded) "Collapse block" else "Expand block",
-                                        tint = secondaryTextColor
+                                        tint = translucentForegroundColor
                                     )
                                 }
                             }
@@ -491,26 +528,52 @@ fun RoutineEditorScreen(
                                     pendingFocusIndex = null
                                 }
                             }
-                            OutlinedTextField(
-                                value = block.textToSpeak,
-                                onValueChange = { viewModel.updateBlockText(index, it) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(promptFocusRequester),
-                                label = { Text("Prompt") },
-                                placeholder = {
-                                    Text(
-                                        if (index == 0) {
-                                            "What would you like to start with?"
-                                        } else {
-                                            "What would you like to do next?"
-                                        },
-                                        color = secondaryTextColor
-                                    )
-                                },
-                                shape = blockShape,
-                                colors = textFieldColors
-                            )
+                            if (block.recordedPrompt == null) {
+                                OutlinedTextField(
+                                    value = block.textToSpeak,
+                                    onValueChange = { viewModel.updateBlockText(index, it) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(promptFocusRequester),
+                                    label = { Text("Line") },
+                                    placeholder = {
+                                        Text(
+                                            if (index == 0) {
+                                                "What would you like to start with?"
+                                            } else {
+                                                "What would you like to do next?"
+                                            },
+                                            color = translucentSecondaryForegroundColor
+                                        )
+                                    },
+                                    shape = blockShape,
+                                    colors = translucentTextFieldColors,
+                                    trailingIcon = {
+                                        MicRecordIconButton { filePath, durationMillis ->
+                                            viewModel.setBlockRecordedPrompt(
+                                                index = index,
+                                                filePath = filePath,
+                                                durationMillis = durationMillis
+                                            )
+                                        }
+                                    }
+                                )
+                            } else {
+                                RecordedPromptCompactRow(
+                                    filePath = block.recordedPrompt.filePath,
+                                    durationMillis = block.recordedPrompt.durationMillis,
+                                    onReplaceRecording = { filePath, durationMillis ->
+                                        viewModel.setBlockRecordedPrompt(
+                                            index = index,
+                                            filePath = filePath,
+                                            durationMillis = durationMillis
+                                        )
+                                    },
+                                    onDeleteRecording = {
+                                        viewModel.clearBlockRecordedPrompt(index)
+                                    }
+                                )
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -535,7 +598,7 @@ fun RoutineEditorScreen(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     shape = blockShape,
                                     singleLine = true,
-                                    colors = textFieldColors
+                                    colors = translucentTextFieldColors
                                 )
                                 OutlinedTextField(
                                     value = waitSecondsInput,
@@ -551,7 +614,7 @@ fun RoutineEditorScreen(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     shape = blockShape,
                                     singleLine = true,
-                                    colors = textFieldColors
+                                    colors = translucentTextFieldColors
                                 )
                             }
                             BlockTimedTtsEditor(
@@ -622,23 +685,24 @@ fun RoutineEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    IconButton(
-                        onClick = {
-                            shouldFocusAddedBlock = true
-                            viewModel.addBlock()
-                        },
+                    Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(36.dp)
                             .border(
                                 width = 2.dp,
-                                color = outlineColor,
+                                color = primaryTextColor,
                                 shape = CircleShape
                             )
+                            .clickable {
+                                shouldFocusAddedBlock = true
+                                viewModel.addBlock()
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Add,
                             contentDescription = "Add block",
-                            tint = secondaryTextColor,
+                            tint = primaryTextColor,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -670,6 +734,25 @@ fun RoutineEditorScreen(
                     contentDescription = "Delete routine",
                     modifier = Modifier.size(26.dp)
                 )
+            }
+
+            Button(
+                onClick = {
+                    val routineJson = viewModel.selectedRoutineAsJson() ?: return@Button
+                    shareRoutineJson(
+                        context = context,
+                        routineName = uiState.routineName,
+                        routineJson = routineJson
+                    )
+                },
+                modifier = Modifier.weight(1f),
+                shape = blockShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    contentColor = MaterialTheme.colorScheme.onSecondary
+                )
+            ) {
+                Text("Share JSON")
             }
 
             Button(
@@ -838,6 +921,15 @@ fun RoutineEditorScreen(
             )
         }
     }
+}
+
+private fun shareRoutineJson(context: Context, routineName: String, routineJson: String) {
+    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/json"
+        putExtra(Intent.EXTRA_SUBJECT, "$routineName routine")
+        putExtra(Intent.EXTRA_TEXT, routineJson)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, "Share routine JSON"))
 }
 
 private fun startPlaybackService(context: Context, routineId: Long?) {

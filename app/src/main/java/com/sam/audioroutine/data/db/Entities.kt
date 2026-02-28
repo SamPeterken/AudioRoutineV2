@@ -28,6 +28,8 @@ data class RoutineBlockEntity(
     val routineId: Long,
     val position: Int,
     val textToSpeak: String,
+    val recordedPromptFilePath: String?,
+    val recordedPromptDurationMillis: Long,
     val waitDurationSeconds: Long,
     val musicStyle: String?,
     val musicSource: String?,

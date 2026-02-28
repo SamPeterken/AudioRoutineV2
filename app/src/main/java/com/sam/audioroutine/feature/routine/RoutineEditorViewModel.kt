@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.sam.audioroutine.domain.model.MusicSelection
 import com.sam.audioroutine.domain.model.MusicSelectionType
 import com.sam.audioroutine.domain.model.MusicSourceType
+import com.sam.audioroutine.domain.model.RecordedPrompt
 import com.sam.audioroutine.domain.model.Routine
 import com.sam.audioroutine.domain.model.RoutineBlock
 import com.sam.audioroutine.domain.model.RoutineBlockTtsEvent
+import com.sam.audioroutine.domain.model.RoutineBundleCodec
 import com.sam.audioroutine.domain.repo.RoutineRepository
+import com.sam.audioroutine.domain.repo.RoutineSeedSource
 import com.sam.audioroutine.feature.player.music.FreeCatalogLibrary
 import com.sam.audioroutine.feature.player.music.FreeCatalogStyle
 import com.sam.audioroutine.feature.player.music.FreeCatalogTheme
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.Duration
 import javax.inject.Inject
 
@@ -43,8 +47,17 @@ data class RoutineListItemUiState(
 
 @HiltViewModel
 class RoutineEditorViewModel @Inject constructor(
-    private val routineRepository: RoutineRepository
+    private val routineRepository: RoutineRepository,
+    private val routineSeedSource: RoutineSeedSource
 ) : ViewModel() {
+
+    companion object {
+        const val RECORDED_PROMPT_PLACEHOLDER_TEXT = "Recorded prompt"
+    }
+
+    private var nextTemporaryBlockId = -1L
+
+    private fun newTemporaryBlockId(): Long = nextTemporaryBlockId--
 
     private val defaultWakeTrack =
         FreeCatalogLibrary.findTrackById("soundhelix-1-calm-ambient")
@@ -64,6 +77,7 @@ class RoutineEditorViewModel @Inject constructor(
 
     private val defaultMorningBlocks: List<RoutineBlock> = listOf(
         RoutineBlock(
+            id = -1L,
             position = 0,
             textToSpeak = "Wake up",
             waitDuration = Duration.ofMinutes(2),
@@ -76,6 +90,7 @@ class RoutineEditorViewModel @Inject constructor(
             )
         ),
         RoutineBlock(
+            id = -2L,
             position = 1,
             textToSpeak = "Drink a glass of water",
             waitDuration = Duration.ofMinutes(2),
@@ -88,6 +103,7 @@ class RoutineEditorViewModel @Inject constructor(
             )
         ),
         RoutineBlock(
+            id = -3L,
             position = 2,
             textToSpeak = "Exercise",
             waitDuration = Duration.ofMinutes(20),
@@ -100,6 +116,7 @@ class RoutineEditorViewModel @Inject constructor(
             )
         ),
         RoutineBlock(
+            id = -4L,
             position = 3,
             textToSpeak = "Take a shower",
             waitDuration = Duration.ofMinutes(10),
@@ -112,6 +129,7 @@ class RoutineEditorViewModel @Inject constructor(
             )
         ),
         RoutineBlock(
+            id = -5L,
             position = 4,
             textToSpeak = "Meditate",
             waitDuration = Duration.ofMinutes(10),
@@ -127,7 +145,7 @@ class RoutineEditorViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(
         RoutineEditorUiState(
-            blocks = defaultMorningBlocks,
+            blocks = defaultMorningBlocks.ensureStableBlockIds(),
             totalDurationText = defaultMorningBlocks.totalDurationText()
         )
     )
@@ -160,13 +178,16 @@ class RoutineEditorViewModel @Inject constructor(
         val selectedRoutineId = _uiState.value.selectedRoutineId ?: return
         viewModelScope.launch {
             autosaveJob?.cancel()
+            routineRepository.getRoutine(selectedRoutineId)
+                ?.blocks
+                ?.forEach(::deleteBlockRecordings)
             routineRepository.deleteRoutine(selectedRoutineId)
             loadedRoutineId = null
             if (routineRepository.getLatestRoutine() == null) {
                 routineRepository.saveRoutine(
                     Routine(
                         name = "Morning Routine",
-                        blocks = defaultMorningBlocks.withReindexedPositions()
+                        blocks = defaultMorningBlocks.ensureStableBlockIds().withReindexedPositions()
                     )
                 )
             }
@@ -189,6 +210,7 @@ class RoutineEditorViewModel @Inject constructor(
     fun addBlock() {
         _uiState.update { state ->
             val updated = state.blocks + RoutineBlock(
+                id = newTemporaryBlockId(),
                 position = state.blocks.size,
                 textToSpeak = "",
                 waitDuration = Duration.ofMinutes(1),
@@ -217,6 +239,7 @@ class RoutineEditorViewModel @Inject constructor(
     fun removeBlock(index: Int) {
         _uiState.update { state ->
             if (index !in state.blocks.indices) return@update state
+            deleteBlockRecordings(state.blocks[index])
             val updated = state.blocks.toMutableList().apply { removeAt(index) }
             state.copy(
                 blocks = updated.withReindexedPositions(),
@@ -230,7 +253,47 @@ class RoutineEditorViewModel @Inject constructor(
         _uiState.update { state ->
             if (index !in state.blocks.indices) return@update state
             val updated = state.blocks.toMutableList()
-            updated[index] = updated[index].copy(textToSpeak = value)
+            deleteRecordingAtPath(updated[index].recordedPrompt?.filePath)
+            updated[index] = updated[index].copy(
+                textToSpeak = value,
+                recordedPrompt = null
+            )
+            state.copy(blocks = updated)
+        }
+        scheduleAutosave()
+    }
+
+    fun setBlockRecordedPrompt(index: Int, filePath: String, durationMillis: Long) {
+        val normalizedPath = filePath.trim()
+        if (normalizedPath.isBlank()) return
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val updated = state.blocks.toMutableList()
+            val existingPath = updated[index].recordedPrompt?.filePath
+            if (existingPath != normalizedPath) {
+                deleteRecordingAtPath(existingPath)
+            }
+            updated[index] = updated[index].copy(
+                textToSpeak = RECORDED_PROMPT_PLACEHOLDER_TEXT,
+                recordedPrompt = RecordedPrompt(
+                    filePath = normalizedPath,
+                    durationMillis = durationMillis.coerceAtLeast(0L)
+                )
+            )
+            state.copy(blocks = updated)
+        }
+        scheduleAutosave()
+    }
+
+    fun clearBlockRecordedPrompt(index: Int) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val updated = state.blocks.toMutableList()
+            deleteRecordingAtPath(updated[index].recordedPrompt?.filePath)
+            updated[index] = updated[index].copy(
+                textToSpeak = "",
+                recordedPrompt = null
+            )
             state.copy(blocks = updated)
         }
         scheduleAutosave()
@@ -302,6 +365,36 @@ class RoutineEditorViewModel @Inject constructor(
         scheduleAutosave()
     }
 
+    fun addBlockRecordedTtsEvent(index: Int, offsetSecondsInput: String, filePath: String, durationMillis: Long) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val offsetSeconds = offsetSecondsInput.toLongOrNull() ?: return@update state
+            if (offsetSeconds < 0L) return@update state
+            val normalizedPath = filePath.trim()
+            if (normalizedPath.isBlank()) return@update state
+
+            val updated = state.blocks.toMutableList()
+            val block = updated[index]
+            if (offsetSeconds > block.waitDuration.seconds) return@update state
+
+            updated[index] = block.copy(
+                additionalTtsEvents = sanitizeAdditionalEvents(
+                    block = block,
+                    events = block.additionalTtsEvents + RoutineBlockTtsEvent(
+                        offsetSeconds = offsetSeconds,
+                        text = RECORDED_PROMPT_PLACEHOLDER_TEXT,
+                        recordedPrompt = RecordedPrompt(
+                            filePath = normalizedPath,
+                            durationMillis = durationMillis.coerceAtLeast(0L)
+                        )
+                    )
+                )
+            )
+            state.copy(blocks = updated)
+        }
+        scheduleAutosave()
+    }
+
     fun updateBlockTtsEventOffsetSeconds(index: Int, eventIndex: Int, offsetSecondsInput: String) {
         _uiState.update { state ->
             if (index !in state.blocks.indices) return@update state
@@ -334,7 +427,69 @@ class RoutineEditorViewModel @Inject constructor(
             if (sanitizedText.isBlank()) return@update state
 
             val updatedEvents = block.additionalTtsEvents.toMutableList()
-            updatedEvents[eventIndex] = updatedEvents[eventIndex].copy(text = sanitizedText)
+            deleteRecordingAtPath(updatedEvents[eventIndex].recordedPrompt?.filePath)
+            updatedEvents[eventIndex] = updatedEvents[eventIndex].copy(
+                text = sanitizedText,
+                recordedPrompt = null
+            )
+
+            val updatedBlocks = state.blocks.toMutableList()
+            updatedBlocks[index] = block.copy(
+                additionalTtsEvents = sanitizeAdditionalEvents(
+                    block = block,
+                    events = updatedEvents
+                )
+            )
+            state.copy(blocks = updatedBlocks)
+        }
+        scheduleAutosave()
+    }
+
+    fun setBlockTtsEventRecordedPrompt(index: Int, eventIndex: Int, filePath: String, durationMillis: Long) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val block = state.blocks[index]
+            if (eventIndex !in block.additionalTtsEvents.indices) return@update state
+            val normalizedPath = filePath.trim()
+            if (normalizedPath.isBlank()) return@update state
+
+            val updatedEvents = block.additionalTtsEvents.toMutableList()
+            val previousPath = updatedEvents[eventIndex].recordedPrompt?.filePath
+            if (previousPath != normalizedPath) {
+                deleteRecordingAtPath(previousPath)
+            }
+            updatedEvents[eventIndex] = updatedEvents[eventIndex].copy(
+                text = RECORDED_PROMPT_PLACEHOLDER_TEXT,
+                recordedPrompt = RecordedPrompt(
+                    filePath = normalizedPath,
+                    durationMillis = durationMillis.coerceAtLeast(0L)
+                )
+            )
+
+            val updatedBlocks = state.blocks.toMutableList()
+            updatedBlocks[index] = block.copy(
+                additionalTtsEvents = sanitizeAdditionalEvents(
+                    block = block,
+                    events = updatedEvents
+                )
+            )
+            state.copy(blocks = updatedBlocks)
+        }
+        scheduleAutosave()
+    }
+
+    fun clearBlockTtsEventRecordedPrompt(index: Int, eventIndex: Int) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val block = state.blocks[index]
+            if (eventIndex !in block.additionalTtsEvents.indices) return@update state
+
+            val updatedEvents = block.additionalTtsEvents.toMutableList()
+            deleteRecordingAtPath(updatedEvents[eventIndex].recordedPrompt?.filePath)
+            updatedEvents[eventIndex] = updatedEvents[eventIndex].copy(
+                text = "",
+                recordedPrompt = null
+            )
 
             val updatedBlocks = state.blocks.toMutableList()
             updatedBlocks[index] = block.copy(
@@ -355,6 +510,7 @@ class RoutineEditorViewModel @Inject constructor(
             if (eventIndex !in block.additionalTtsEvents.indices) return@update state
 
             val updatedEvents = block.additionalTtsEvents.toMutableList()
+            deleteRecordingAtPath(updatedEvents[eventIndex].recordedPrompt?.filePath)
             updatedEvents.removeAt(eventIndex)
 
             val updatedBlocks = state.blocks.toMutableList()
@@ -463,6 +619,23 @@ class RoutineEditorViewModel @Inject constructor(
         scheduleAutosave()
     }
 
+    fun addBlockBundledSong(index: Int, title: String, assetUri: String) {
+        _uiState.update { state ->
+            if (index !in state.blocks.indices) return@update state
+            val normalizedUri = assetUri.trim()
+            if (normalizedUri.isBlank()) return@update state
+            val normalizedTitle = title.trim().ifBlank { "Bundled audio" }
+            val block = state.blocks[index]
+            val songs = block.playlistSongs() + PlaylistSong(
+                source = MusicSourceType.LOCAL_FILE,
+                title = normalizedTitle,
+                uri = normalizedUri
+            )
+            state.withUpdatedBlockMusic(index = index, songs = songs, randomOrder = block.isRandomSongOrder())
+        }
+        scheduleAutosave()
+    }
+
     fun setBlockLocalFiles(index: Int, fileUris: List<String>) {
         _uiState.update { state ->
             if (index !in state.blocks.indices) return@update state
@@ -536,6 +709,17 @@ class RoutineEditorViewModel @Inject constructor(
         }
     }
 
+    fun selectedRoutineAsJson(): String? {
+        val state = _uiState.value
+        val selectedRoutineId = state.selectedRoutineId ?: return null
+        val routine = Routine(
+            id = selectedRoutineId,
+            name = state.routineName,
+            blocks = state.blocks.withReindexedPositions()
+        )
+        return RoutineBundleCodec.encode(routine)
+    }
+
     private fun observeRoutines() {
         viewModelScope.launch {
             ensureSeedRoutineIfEmpty()
@@ -566,10 +750,11 @@ class RoutineEditorViewModel @Inject constructor(
 
     private suspend fun ensureSeedRoutineIfEmpty() {
         if (routineRepository.getLatestRoutine() != null) return
+        val bundledRoutine = routineSeedSource.loadBundledRoutine()?.normalizedForPersistence()
         routineRepository.saveRoutine(
-            Routine(
+            bundledRoutine ?: Routine(
                 name = "Morning Routine",
-                blocks = defaultMorningBlocks.withReindexedPositions()
+                blocks = defaultMorningBlocks.ensureStableBlockIds().withReindexedPositions()
             )
         )
     }
@@ -577,7 +762,10 @@ class RoutineEditorViewModel @Inject constructor(
     private suspend fun loadRoutine(routineId: Long) {
         val routine = routineRepository.getRoutine(routineId) ?: return
         loadedRoutineId = routine.id
-        val blocks = routine.blocks.withReindexedPositions()
+        val blocks = routine.blocks
+            .sanitizeMissingRecordedPrompts()
+            .ensureStableBlockIds()
+            .withReindexedPositions()
         _uiState.update {
             it.copy(
                 selectedRoutineId = routine.id,
@@ -690,13 +878,84 @@ class RoutineEditorViewModel @Inject constructor(
         return mapIndexed { index, block -> block.copy(position = index) }
     }
 
+    private fun Routine.normalizedForPersistence(): Routine {
+        return copy(
+            id = 0L,
+            blocks = blocks
+                .map { block -> block.copy(id = 0L, routineId = 0L) }
+                .withReindexedPositions()
+        )
+    }
+
+    private fun List<RoutineBlock>.ensureStableBlockIds(): List<RoutineBlock> {
+        return map { block ->
+            if (block.id == 0L) {
+                block.copy(id = newTemporaryBlockId())
+            } else {
+                block
+            }
+        }
+    }
+
     private fun sanitizeAdditionalEvents(
         block: RoutineBlock,
         events: List<RoutineBlockTtsEvent>
     ): List<RoutineBlockTtsEvent> {
         return events
-            .filter { it.offsetSeconds in 0L..block.waitDuration.seconds && it.text.isNotBlank() }
+            .filter {
+                it.offsetSeconds in 0L..block.waitDuration.seconds &&
+                    (it.text.isNotBlank() || it.recordedPrompt != null)
+            }
             .sortedBy { it.offsetSeconds }
+    }
+
+    private fun List<RoutineBlock>.sanitizeMissingRecordedPrompts(): List<RoutineBlock> {
+        return map { block ->
+            val sanitizedBlockPrompt = block.recordedPrompt?.takeIf { recordingExists(it.filePath) }
+            val sanitizedStartText = when {
+                sanitizedBlockPrompt != null -> block.textToSpeak.ifBlank { RECORDED_PROMPT_PLACEHOLDER_TEXT }
+                block.textToSpeak.isBlank() -> RECORDED_PROMPT_PLACEHOLDER_TEXT
+                else -> block.textToSpeak
+            }
+            val sanitizedEvents = block.additionalTtsEvents.mapNotNull { event ->
+                val sanitizedPrompt = event.recordedPrompt?.takeIf { recordingExists(it.filePath) }
+                val sanitizedText = when {
+                    sanitizedPrompt != null -> event.text.ifBlank { RECORDED_PROMPT_PLACEHOLDER_TEXT }
+                    event.text.isBlank() -> RECORDED_PROMPT_PLACEHOLDER_TEXT
+                    else -> event.text
+                }
+                if (sanitizedText.isBlank() && sanitizedPrompt == null) {
+                    null
+                } else {
+                    event.copy(text = sanitizedText, recordedPrompt = sanitizedPrompt)
+                }
+            }
+
+            block.copy(
+                textToSpeak = sanitizedStartText,
+                recordedPrompt = sanitizedBlockPrompt,
+                additionalTtsEvents = sanitizedEvents
+            )
+        }
+    }
+
+    private fun deleteBlockRecordings(block: RoutineBlock) {
+        deleteRecordingAtPath(block.recordedPrompt?.filePath)
+        block.additionalTtsEvents.forEach { event ->
+            deleteRecordingAtPath(event.recordedPrompt?.filePath)
+        }
+    }
+
+    private fun recordingExists(path: String): Boolean {
+        return runCatching { File(path).exists() }.getOrDefault(false)
+    }
+
+    private fun deleteRecordingAtPath(path: String?) {
+        val normalizedPath = path?.trim().orEmpty()
+        if (normalizedPath.isBlank()) return
+        runCatching {
+            File(normalizedPath).takeIf { it.exists() }?.delete()
+        }
     }
 
     private fun formatCountdownText(remainingSeconds: Long): String {

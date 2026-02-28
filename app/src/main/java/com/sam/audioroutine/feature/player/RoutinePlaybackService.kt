@@ -3,6 +3,7 @@ package com.sam.audioroutine.feature.player
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Build
@@ -10,12 +11,14 @@ import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.app.NotificationCompat
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.sam.audioroutine.domain.model.RoutineBlock
 import com.sam.audioroutine.domain.model.allTtsEvents
+import com.sam.audioroutine.MainActivity
 import com.sam.audioroutine.R
 import com.sam.audioroutine.domain.repo.RoutineRepository
 import com.sam.audioroutine.feature.player.music.BlockMusicResolver
@@ -30,6 +33,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.io.File
 import java.util.Locale
 import javax.inject.Inject
 import kotlin.coroutines.resume
@@ -53,6 +57,7 @@ class RoutinePlaybackService : Service() {
     private var playbackJob: Job? = null
     private var textToSpeech: TextToSpeech? = null
     private var exoPlayer: ExoPlayer? = null
+    private var promptPlayer: ExoPlayer? = null
     private var isTextToSpeechReady = false
     private var currentBlockIndex: Int? = null
     private var skipCurrentBlockRequested = false
@@ -80,6 +85,9 @@ class RoutinePlaybackService : Service() {
             volume = 1f
             addListener(playerListener)
         }
+        promptPlayer = ExoPlayer.Builder(this).build().apply {
+            volume = 1f
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -91,6 +99,7 @@ class RoutinePlaybackService : Service() {
             PlaybackServiceContract.ACTION_SKIP_CURRENT -> {
                 skipCurrentBlockRequested = true
                 textToSpeech?.stop()
+                promptPlayer?.stop()
             }
 
             PlaybackServiceContract.ACTION_ADD_TIME -> {
@@ -128,6 +137,8 @@ class RoutinePlaybackService : Service() {
         exoPlayer?.removeListener(playerListener)
         exoPlayer?.stop()
         exoPlayer?.release()
+        promptPlayer?.stop()
+        promptPlayer?.release()
         playbackProgressBus.update(PlaybackProgress())
         super.onDestroy()
     }
@@ -195,13 +206,13 @@ class RoutinePlaybackService : Service() {
             .orEmpty()
         val blockStartMillis = System.currentTimeMillis()
         val blockBaseDurationMillis = block.waitDuration.toMillis().coerceAtLeast(0L)
-        var activePrompt = block.textToSpeak
+        var activeLine = block.textToSpeak.ifBlank { "Recorded prompt" }
 
         emitPlaybackSnapshot(
             routineName = routineName,
             orderedBlocks = orderedBlocks,
             blockIndex = blockIndex,
-            activePrompt = activePrompt,
+            activeLine = activeLine,
             routineStartEpochMillis = routineStartEpochMillis
         )
 
@@ -214,7 +225,7 @@ class RoutinePlaybackService : Service() {
                 routineName = routineName,
                 orderedBlocks = orderedBlocks,
                 blockIndex = blockIndex,
-                activePrompt = activePrompt,
+                activeLine = activeLine,
                 routineStartEpochMillis = routineStartEpochMillis
             )
             if (skippedToNextBlock) {
@@ -222,18 +233,18 @@ class RoutinePlaybackService : Service() {
                 return
             }
 
-            activePrompt = event.text
+            activeLine = event.text.ifBlank { "Recorded prompt" }
             emitPlaybackSnapshot(
                 routineName = routineName,
                 orderedBlocks = orderedBlocks,
                 blockIndex = blockIndex,
-                activePrompt = activePrompt,
+                activeLine = activeLine,
                 routineStartEpochMillis = routineStartEpochMillis
             )
             updateNotification(
-                "$routineName: ${blockIndex + 1}/$totalBlocks ${event.text}$musicSuffix"
+                "$routineName: ${blockIndex + 1}/$totalBlocks ${event.text.ifBlank { "Recorded prompt" }}$musicSuffix"
             )
-            duckAndSpeak(event.text)
+            duckAndPlayPrompt(event)
             if (skipCurrentBlockRequested) {
                 applySkipAdjustment(
                     blockStartEpochMillis = blockStartMillis,
@@ -252,7 +263,7 @@ class RoutinePlaybackService : Service() {
             routineName = routineName,
             orderedBlocks = orderedBlocks,
             blockIndex = blockIndex,
-            activePrompt = activePrompt,
+            activeLine = activeLine,
             routineStartEpochMillis = routineStartEpochMillis
         )
         if (skippedToNextBlock) {
@@ -264,7 +275,7 @@ class RoutinePlaybackService : Service() {
             routineName = routineName,
             orderedBlocks = orderedBlocks,
             blockIndex = blockIndex,
-            activePrompt = activePrompt,
+            activeLine = activeLine,
             routineStartEpochMillis = routineStartEpochMillis
         )
         currentBlockIndex = null
@@ -277,7 +288,7 @@ class RoutinePlaybackService : Service() {
         routineName: String,
         orderedBlocks: List<RoutineBlock>,
         blockIndex: Int,
-        activePrompt: String,
+        activeLine: String,
         routineStartEpochMillis: Long
     ): Boolean {
         while (true) {
@@ -296,7 +307,7 @@ class RoutinePlaybackService : Service() {
                 routineName = routineName,
                 orderedBlocks = orderedBlocks,
                 blockIndex = blockIndex,
-                activePrompt = activePrompt,
+                activeLine = activeLine,
                 routineStartEpochMillis = routineStartEpochMillis
             )
             if (remaining <= 0L) {
@@ -312,7 +323,7 @@ class RoutinePlaybackService : Service() {
         routineName: String,
         orderedBlocks: List<RoutineBlock>,
         blockIndex: Int,
-        activePrompt: String,
+        activeLine: String,
         routineStartEpochMillis: Long
     ): Boolean {
         while (true) {
@@ -334,7 +345,7 @@ class RoutinePlaybackService : Service() {
                 routineName = routineName,
                 orderedBlocks = orderedBlocks,
                 blockIndex = blockIndex,
-                activePrompt = activePrompt,
+                activeLine = activeLine,
                 routineStartEpochMillis = routineStartEpochMillis
             )
 
@@ -349,7 +360,7 @@ class RoutinePlaybackService : Service() {
         routineName: String,
         orderedBlocks: List<RoutineBlock>,
         blockIndex: Int,
-        activePrompt: String,
+        activeLine: String,
         routineStartEpochMillis: Long
     ) {
         playbackProgressBus.update(
@@ -357,7 +368,7 @@ class RoutinePlaybackService : Service() {
                 routineName = routineName,
                 orderedBlocks = orderedBlocks,
                 currentBlockIndex = blockIndex,
-                currentPrompt = activePrompt,
+                currentLine = activeLine,
                 nowEpochMillis = System.currentTimeMillis(),
                 routineStartEpochMillis = routineStartEpochMillis,
                 additionalDurationMillisByIndex = additionalDurationMillisByBlockIndex,
@@ -414,18 +425,54 @@ class RoutinePlaybackService : Service() {
         return fallbackResult != TextToSpeech.LANG_MISSING_DATA && fallbackResult != TextToSpeech.LANG_NOT_SUPPORTED
     }
 
-    private suspend fun duckAndSpeak(text: String) {
+    private suspend fun duckAndPlayPrompt(event: com.sam.audioroutine.domain.model.RoutineBlockTtsEvent) {
         val player = exoPlayer
         if (player != null) {
             player.volume = musicPromptPolicy.onPromptStart(player.volume)
         }
         try {
-            speakAndWait(text)
+            val recordedPath = event.recordedPrompt?.filePath?.trim().orEmpty()
+            val hasRecorded = recordedPath.isNotBlank() && File(recordedPath).exists()
+            if (hasRecorded) {
+                playRecordedPromptAndWait(recordedPath)
+            } else {
+                speakAndWait(event.text)
+            }
         } finally {
             if (player != null) {
                 player.volume = musicPromptPolicy.onPromptEnd(player.volume)
             }
         }
+    }
+
+    private suspend fun playRecordedPromptAndWait(filePath: String) {
+        val player = promptPlayer ?: return
+        suspendCancellableCoroutine { continuation ->
+            val listener = object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
+                        player.removeListener(this)
+                        if (continuation.isActive) continuation.resume(Unit)
+                    }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    player.removeListener(this)
+                    if (continuation.isActive) continuation.resume(Unit)
+                }
+            }
+
+            player.addListener(listener)
+            player.setMediaItem(MediaItem.fromUri(File(filePath).toUri()))
+            player.prepare()
+            player.playWhenReady = true
+
+            continuation.invokeOnCancellation {
+                player.removeListener(listener)
+                player.stop()
+            }
+        }
+        player.clearMediaItems()
     }
 
     private suspend fun speakAndWait(text: String) {
@@ -479,11 +526,25 @@ class RoutinePlaybackService : Service() {
     }
 
     private fun buildNotification(contentText: String): Notification {
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_PLAYBACK, true)
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Audio Routine")
             .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(openAppPendingIntent)
             .build()
     }
 

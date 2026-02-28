@@ -28,7 +28,7 @@ Enable:
 - Create/edit routine blocks
 - Save routine
 - Start playback
-- Verify TTS speaks each block and progress updates
+- Verify voice speaks each block and progress updates
 - Verify schedule screen accepts time input
 
 ## 6) USB flow (recommended)
@@ -55,3 +55,38 @@ Use task `Build + Install (Windows ADB)` to:
 - Build debug APK in WSL
 - Copy APK to Windows Downloads
 - Install with Windows `adb`
+
+## 8) Bundle your custom routine into the APK
+Use this when you want your girlfriend to install the app with your routine already preloaded on first launch.
+
+1. In the app, open your routine and tap `Share JSON`.
+2. Send/copy the JSON payload to your computer.
+3. Replace file:
+	- `app/src/main/assets/bundled_routine.json`
+4. Build and share the APK (`./gradlew assembleDebug` or VS Code task).
+
+Notes:
+- The bundled routine is only applied when the app has no routines yet (fresh install/app data cleared).
+- If the app already has saved routines, it keeps existing data.
+
+## 9) Bundle specific audio files into the APK
+If you want songs to travel with the app install (no phone file picker needed):
+
+1. Put your audio files in:
+	- `app/src/main/assets/bundled_audio/`
+2. In the app editor, open a block and choose `Add bundled song`.
+3. Save/share your routine JSON and rebuild the APK.
+
+Supported file extensions:
+- `.mp3`, `.wav`, `.ogg`, `.m4a`, `.aac`, `.flac`
+
+## 10) Set a bundled default background image
+To ship the app with a default background photo:
+
+1. Add this file:
+	- `app/src/main/assets/default_background.jpg`
+2. Rebuild the APK.
+
+Notes:
+- If no custom background is picked by the user, the app uses this bundled image.
+- If the image file is missing, the app falls back to an in-app gradient background.

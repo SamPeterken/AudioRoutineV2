@@ -1,9 +1,11 @@
 package com.sam.audioroutine.feature.routine
 
 import com.sam.audioroutine.domain.model.Routine
+import com.sam.audioroutine.domain.model.RoutineBundleCodec
 import com.sam.audioroutine.domain.model.MusicSelectionType
 import com.sam.audioroutine.domain.model.MusicSourceType
 import com.sam.audioroutine.domain.repo.RoutineRepository
+import com.sam.audioroutine.domain.repo.RoutineSeedSource
 import com.sam.audioroutine.feature.player.music.FreeCatalogLibrary
 import com.sam.audioroutine.feature.player.music.MusicPlaylistCodec
 import kotlinx.coroutines.flow.Flow
@@ -39,7 +41,7 @@ class RoutineEditorViewModelTest {
     @Test
     fun initialState_hasCompleteMorningRoutineStarterBlocks() = runTest {
         val repository = FakeRoutineRepository()
-        val viewModel = RoutineEditorViewModel(repository)
+        val viewModel = RoutineEditorViewModel(repository, FakeRoutineSeedSource())
         advanceUntilIdle()
 
         val blocks = viewModel.uiState.value.blocks
@@ -58,7 +60,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun addBlock_increasesBlockCount() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         val before = viewModel.uiState.value.blocks.size
@@ -71,7 +73,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun moveBlock_swapsOrder() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
         viewModel.addBlock()
         viewModel.updateBlockText(index = 1, value = "Second")
@@ -83,7 +85,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun updateBlockMinutes_updatesTotalDuration() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMinutes(index = 0, minutesInput = "65")
@@ -93,7 +95,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun updateBlockSeconds_updatesDurationAndRetainsMinuteComponent() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMinutes(index = 0, minutesInput = "2")
@@ -105,7 +107,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun updateBlockMusicStyle_syncsMusicSelection() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMusicStyle(index = 0, value = "Focus")
@@ -117,7 +119,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun setBlockFreeCatalogTrack_setsTrackSelectionAndLegacyMusicStyle() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
         val track = FreeCatalogLibrary.findTrackById("jazz-uplift-electronic")
         requireNotNull(track)
@@ -134,7 +136,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun setBlockNoMusic_clearsMusicStyleAndSelection() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.setBlockNoMusic(index = 0)
@@ -146,7 +148,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun setBlockLocalFiles_setsLocalSelectionWithEncodedUris() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
         val localUris = listOf(
             "content://media/external/audio/media/10",
@@ -166,7 +168,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun addAndRemoveBlockSongs_updatesPlaylistSize() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
         val extraTrack = FreeCatalogLibrary.findTrackById("soundhelix-2-focus-lofi")
         requireNotNull(extraTrack)
@@ -183,8 +185,23 @@ class RoutineEditorViewModelTest {
     }
 
     @Test
+    fun addBlockBundledSong_appendsAssetUriToPlaylist() = runTest {
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
+        advanceUntilIdle()
+
+        viewModel.addBlockBundledSong(
+            index = 0,
+            title = "My bundled song",
+            assetUri = "asset:///bundled_audio/my_song.mp3"
+        )
+
+        val songs = MusicPlaylistCodec.decode(viewModel.uiState.value.blocks[0].musicSelection?.sourceId)
+        assertTrue(songs.any { it.uri == "asset:///bundled_audio/my_song.mp3" })
+    }
+
+    @Test
     fun setBlockSongOrder_setsPlaylistType() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.setBlockLocalFiles(index = 0, fileUris = listOf("content://media/external/audio/media/99"))
@@ -197,7 +214,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun addBlockTtsEvent_addsEventWhenWithinBlockDuration() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMinutes(index = 0, minutesInput = "2")
@@ -211,7 +228,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun addBlockTtsEvent_ignoresEventsOutsideBlockDuration() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMinutes(index = 0, minutesInput = "1")
@@ -223,7 +240,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun addBlockCountdownEvent_buildsExpectedCountdownText() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMinutes(index = 0, minutesInput = "3")
@@ -237,7 +254,7 @@ class RoutineEditorViewModelTest {
 
     @Test
     fun removeBlockTtsEvent_removesOnlyAdditionalEvent() = runTest {
-        val viewModel = RoutineEditorViewModel(FakeRoutineRepository())
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateBlockMinutes(index = 0, minutesInput = "2")
@@ -252,7 +269,7 @@ class RoutineEditorViewModelTest {
     @Test
     fun addRoutine_createsAndSelectsAdditionalRoutine() = runTest {
         val repository = FakeRoutineRepository()
-        val viewModel = RoutineEditorViewModel(repository)
+        val viewModel = RoutineEditorViewModel(repository, FakeRoutineSeedSource())
         advanceUntilIdle()
 
         val initialCount = viewModel.uiState.value.routines.size
@@ -266,7 +283,7 @@ class RoutineEditorViewModelTest {
     @Test
     fun updateRoutineName_autosavesWithoutManualSave() = runTest {
         val repository = FakeRoutineRepository()
-        val viewModel = RoutineEditorViewModel(repository)
+        val viewModel = RoutineEditorViewModel(repository, FakeRoutineSeedSource())
         advanceUntilIdle()
 
         viewModel.updateRoutineName("Deep Focus")
@@ -279,7 +296,7 @@ class RoutineEditorViewModelTest {
     @Test
     fun deleteSelectedRoutine_removesCurrentRoutineAndSelectsAnother() = runTest {
         val repository = FakeRoutineRepository()
-        val viewModel = RoutineEditorViewModel(repository)
+        val viewModel = RoutineEditorViewModel(repository, FakeRoutineSeedSource())
         advanceUntilIdle()
 
         val firstRoutineId = viewModel.uiState.value.selectedRoutineId
@@ -295,6 +312,53 @@ class RoutineEditorViewModelTest {
         assertTrue(repository.getRoutine(secondRoutineId) == null)
     }
 
+    @Test
+    fun initialState_usesBundledRoutineWhenProvided() = runTest {
+        val repository = FakeRoutineRepository()
+        val bundledRoutine = Routine(
+            name = "Sam + Jess",
+            blocks = listOf(
+                viewModelBlock(position = 0, text = "Coffee", waitMinutes = 3),
+                viewModelBlock(position = 1, text = "Walk", waitMinutes = 15)
+            )
+        )
+        val viewModel = RoutineEditorViewModel(repository, FakeRoutineSeedSource(bundledRoutine))
+        advanceUntilIdle()
+
+        assertEquals("Sam + Jess", viewModel.uiState.value.routineName)
+        assertEquals(2, viewModel.uiState.value.blocks.size)
+        assertEquals("Coffee", viewModel.uiState.value.blocks[0].textToSpeak)
+    }
+
+    @Test
+    fun selectedRoutineAsJson_containsCurrentRoutineEdits() = runTest {
+        val viewModel = RoutineEditorViewModel(FakeRoutineRepository(), FakeRoutineSeedSource())
+        advanceUntilIdle()
+
+        viewModel.updateRoutineName("Couple Routine")
+        viewModel.updateBlockText(index = 0, value = "Stretch")
+        val payload = viewModel.selectedRoutineAsJson()
+
+        val decoded = RoutineBundleCodec.decode(payload.orEmpty())
+        assertEquals("Couple Routine", decoded?.name)
+        assertEquals("Stretch", decoded?.blocks?.firstOrNull()?.textToSpeak)
+    }
+
+}
+
+private fun viewModelBlock(position: Int, text: String, waitMinutes: Long): com.sam.audioroutine.domain.model.RoutineBlock {
+    return com.sam.audioroutine.domain.model.RoutineBlock(
+        position = position,
+        textToSpeak = text,
+        waitDuration = java.time.Duration.ofMinutes(waitMinutes),
+        musicStyle = null
+    )
+}
+
+private class FakeRoutineSeedSource(
+    private val routine: Routine? = null
+) : RoutineSeedSource {
+    override suspend fun loadBundledRoutine(): Routine? = routine
 }
 
 private class FakeRoutineRepository : RoutineRepository {
